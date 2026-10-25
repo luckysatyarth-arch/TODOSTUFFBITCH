@@ -62,7 +62,9 @@ Status key:
 | Drag to reschedule | Implemented | Persists immediately; errors surface rather than silently reverting |
 | All-day vs timed events | Tested | Separate columns and a CHECK; unit tests cover the date-shift cases |
 | Timezone correctness | Tested | A timed event buckets into the workspace zone, not UTC |
-| Week, day and agenda views | Not implemented | Month plus the day panel covers the brief's interaction requirement; the other layouts are a straightforward addition |
+| Week view | Implemented | Seven columns, Monday-first, showing everything on a day rather than truncating. Same drag-to-reschedule as the month grid. Steps by week, and the month arrows are hidden while it is on screen |
+| Agenda view | Implemented | Flat chronological list over six weeks, skipping empty days, starting a week back so a task that slipped yesterday is still in view |
+| Day view | Covered by the day panel | The panel beside every layout is the day breakdown: completed, remaining, overdue as of that date, per-member, projects, events, milestones, next week. A separate full-page layout would show the same data |
 
 ## Capture and AI approval
 

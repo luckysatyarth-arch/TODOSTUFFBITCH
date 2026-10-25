@@ -41,6 +41,26 @@ export function addCalendarDays(date: string, days: number): string {
 }
 
 /**
+ * The Monday of the week containing `date`.
+ *
+ * Monday-first throughout, matching the month grid: a week that starts on
+ * Sunday in one view and Monday in another makes two views disagree about
+ * which week a task falls in.
+ */
+export function startOfWeek(date: string): string {
+  // 0 = Sunday .. 6 = Saturday. The date string carries no zone, so UTC
+  // accessors read the calendar date rather than shifting it.
+  const dow = parseISO(`${date}T00:00:00Z`).getUTCDay();
+  return addCalendarDays(date, dow === 0 ? -6 : 1 - dow);
+}
+
+/** The seven dates of the week containing `date`, Monday first. */
+export function weekDates(date: string): string[] {
+  const monday = startOfWeek(date);
+  return Array.from({ length: 7 }, (_, i) => addCalendarDays(monday, i));
+}
+
+/**
  * The next working day after `date`, skipping Saturday and Sunday. Report
  * sections that talk about "tomorrow's priorities" use this so a Friday
  * evening report points at Monday.

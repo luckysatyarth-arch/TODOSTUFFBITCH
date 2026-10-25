@@ -117,8 +117,12 @@ no service-role key. See `supabase/local/README.md`.
 
 What it does not cover is the application code path: the Vitest integration
 tests exercise the server actions through a real Supabase client, and those
-still need a hosted project and `SUPABASE_SERVICE_ROLE_KEY`. They skip
-themselves when it is absent rather than passing vacuously.
+still need a hosted project and `SUPABASE_SERVICE_ROLE_KEY` (they create and
+delete confirmed users, which only the service role can do). They skip
+themselves when it is absent rather than passing vacuously — so a CI pipeline
+that supplies neither the key nor `npm run db:verify` is not exercising the
+authorization boundary at all. `db:verify` needs no credentials, so it is the
+one to put in CI first.
 
 The local harness also cannot say anything about the provider adapters, which
 need real OAuth clients and live accounts.
@@ -146,12 +150,24 @@ between the two days.
 for reporting tasks -- add a `setpos` field to the rule rather than widening
 `freq`.
 
-### Calendar has month and day views only
+### The authenticated screens are not covered by an automated test run here
 
-The brief asks for month, week, day and agenda. The month grid plus the day
-breakdown panel covers the interaction the acceptance criteria describe
-(clicking a date shows completed, remaining, overdue and upcoming work). Week
-and agenda layouts are presentation over the same `getCalendarMonth` data.
+The e2e suite has 20 passing tests (the login gate, every protected route,
+the generic failure message, accessibility and phone-width layout) and 9 that
+sign in first. Those 9 skip without a seeded database, and they skipped on
+every run during this work: the hosted project became unreachable, and a local
+Supabase stack could not be started because this environment caps registry
+data transfer, so its images cannot be pulled.
+
+What that leaves unverified is whether the signed-in screens render against
+real rows and whether the server actions round-trip. The type checker, the
+production build and 122 unit tests cover a good deal of it, and the 88 SQL
+checks cover the authorization rules underneath. The gap is the rendering and
+the round trip, and it is a real gap.
+
+To close it: `npm run db:seed` with a service-role key, then
+`npx playwright test`. The specs are written, including for the calendar
+layouts; they need only a database to run against.
 
 ### No OAuth sign-in
 
@@ -194,14 +210,6 @@ fine for a workspace of normal size and keeps the definitions of "overdue" and
 "remaining" identical to the reports. For a very large workspace, move the
 counts into SQL views alongside `project_progress`.
 
-### Integration tests need the service role key
-
-They create and delete confirmed users, which only the service role can do.
-They skip with a clear message when the key is absent, so `npm test` stays
-green — but a CI pipeline that supplies neither the key nor `npm run db:verify`
-is not exercising the authorization boundary. `db:verify` needs no credentials
-and covers the policies themselves, so it is the one to put in CI first.
-
 ## Recommended order of work from here
 
 1. **Register the WhatsApp template** and verify the group limits against
@@ -212,8 +220,10 @@ and covers the policies themselves, so it is the one to put in CI first.
    embedding.
 3. **Deepen connector indexing** behind a setting, starting with Drive
    document export, which is the most valuable and the best documented.
-4. **Expand recurring tasks**, which is self-contained and well covered by the
-   existing trigger tests.
+4. **Add `setpos` to the recurrence rule** for "last working day of the
+   month", which reporting tasks want and the current four frequencies cannot
+   express.
 5. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
    of thousand tasks.
-6. **Add week and agenda calendar layouts**, which need no new data.
+6. **Seed a database and run the signed-in e2e specs**, which are written and
+   currently skip.

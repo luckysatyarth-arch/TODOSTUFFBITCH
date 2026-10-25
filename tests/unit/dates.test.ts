@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
-  REPORT_CRON_UTC, REPORT_LOCAL_HOUR, addCalendarDays, calendarDateIn, daysUntil,
-  endOfDayUtc, formatDateIn, isOverdue, localClock, monthRange, nextWorkingDay,
-  startOfDayUtc, todayIn,
+  REPORT_CRON_UTC,
+  REPORT_LOCAL_HOUR,
+  addCalendarDays,
+  calendarDateIn,
+  daysUntil,
+  endOfDayUtc,
+  formatDateIn,
+  isOverdue,
+  localClock,
+  monthRange,
+  nextWorkingDay,
+  startOfDayUtc,
+  startOfWeek,
+  todayIn,
+  weekDates,
 } from '@/lib/dates';
 
 describe('timezone handling', () => {
@@ -92,5 +104,37 @@ describe('overdue', () => {
 
   it('treats undated work as not overdue', () => {
     expect(isOverdue(null, 'todo', 'Asia/Kolkata', now)).toBe(false);
+  });
+});
+
+describe('startOfWeek and weekDates', () => {
+  it('returns the Monday of the week, from any day in it', () => {
+    // 2026-10-25 is a Sunday, so its week began on Monday the 19th. Getting
+    // this wrong by a day shifts a whole week view.
+    expect(startOfWeek('2026-10-25')).toBe('2026-10-19');
+    expect(startOfWeek('2026-10-19')).toBe('2026-10-19');
+    expect(startOfWeek('2026-10-20')).toBe('2026-10-19');
+    expect(startOfWeek('2026-10-24')).toBe('2026-10-19');
+    expect(startOfWeek('2026-10-26')).toBe('2026-10-26');
+  });
+
+  it('crosses a month and a year boundary', () => {
+    expect(startOfWeek('2026-11-01')).toBe('2026-10-26');
+    expect(startOfWeek('2027-01-01')).toBe('2026-12-28');
+  });
+
+  it('gives seven consecutive dates, Monday first', () => {
+    const week = weekDates('2026-10-25');
+    expect(week).toEqual([
+      '2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22',
+      '2026-10-23', '2026-10-24', '2026-10-25',
+    ]);
+  });
+
+  it('spans a DST change in a zone that has one without losing a day', () => {
+    // The dates are zone-free, so a week is always seven days even across a
+    // transition that would shorten a day in a local-time calculation.
+    expect(weekDates('2026-03-29')).toHaveLength(7);
+    expect(weekDates('2026-10-25')).toHaveLength(7);
   });
 });

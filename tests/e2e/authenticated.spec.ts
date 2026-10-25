@@ -61,6 +61,42 @@ test.describe('signed in', () => {
     await expect(page.getByText('Remaining', { exact: false }).first()).toBeVisible();
   });
 
+  test('switches between the month, week and agenda layouts', async ({ page }) => {
+    test.skip(!(await signIn(page)), 'Seeded demo user not available.');
+
+    await page.goto('/calendar');
+    const layouts = page.getByRole('navigation', { name: 'Calendar layout' });
+    await expect(layouts).toBeVisible();
+
+    await layouts.getByRole('link', { name: 'week' }).click();
+    await expect(page).toHaveURL(/view=week/);
+    // The week view names all seven days, so Monday is always present.
+    await expect(page.getByText('Mon', { exact: false }).first()).toBeVisible();
+    // The day panel stays alongside each layout rather than being replaced.
+    await expect(page.getByText('Remaining', { exact: false }).first()).toBeVisible();
+
+    await layouts.getByRole('link', { name: 'agenda' }).click();
+    await expect(page).toHaveURL(/view=agenda/);
+
+    await layouts.getByRole('link', { name: 'month' }).click();
+    await expect(page).toHaveURL(/view=month/);
+  });
+
+  test('the week view steps a week at a time, not a month', async ({ page }) => {
+    test.skip(!(await signIn(page)), 'Seeded demo user not available.');
+
+    await page.goto('/calendar?view=week');
+    const previous = page.getByRole('link', { name: 'Previous week' });
+    await expect(previous).toBeVisible();
+    // The month arrows must not be offered while a week is on screen; they
+    // would move a window the user cannot see.
+    await expect(page.getByRole('link', { name: 'Previous month' })).toHaveCount(0);
+
+    await previous.click();
+    await expect(page).toHaveURL(/view=week/);
+    await expect(page.getByRole('link', { name: 'Previous week' })).toBeVisible();
+  });
+
   test('the inbox lists proposals and creates nothing by itself', async ({ page }) => {
     test.skip(!(await signIn(page)), 'Seeded demo user not available.');
 

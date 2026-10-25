@@ -60,13 +60,28 @@ export async function getCalendarMonth(
   year: number,
   month: number,
 ): Promise<CalendarMonth> {
-  const supabase = await createSupabaseServerClient();
   const { first, last } = monthRange(year, month);
 
   // Pad the window by a week either side so the leading/trailing days of the
   // grid (which belong to the adjacent months) are populated too.
-  const from = addCalendarDays(first, -7);
-  const to = addCalendarDays(last, 7);
+  const range = await getCalendarRange(
+    workspace, addCalendarDays(first, -7), addCalendarDays(last, 7),
+  );
+  return { year, month, ...range };
+}
+
+/**
+ * The same records over an arbitrary date range, for the week and agenda
+ * layouts. The month view is this with a padded month window, so all three
+ * layouts bucket and display records identically -- a task that shows as
+ * overdue in one cannot read differently in another.
+ */
+export async function getCalendarRange(
+  workspace: WorkspaceSummary,
+  from: string,
+  to: string,
+): Promise<Omit<CalendarMonth, 'year' | 'month'>> {
+  const supabase = await createSupabaseServerClient();
 
   const [tasksRes, eventsRes, milestonesRes] = await Promise.all([
     supabase
@@ -152,7 +167,7 @@ export async function getCalendarMonth(
     });
   }
 
-  return { year, month, tasksByDate, eventsByDate, milestonesByDate };
+  return { tasksByDate, eventsByDate, milestonesByDate };
 }
 
 function push<T>(map: Map<string, T[]>, key: string, value: T) {

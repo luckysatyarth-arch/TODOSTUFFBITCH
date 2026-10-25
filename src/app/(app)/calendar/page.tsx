@@ -1,9 +1,13 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolvePageContext, one } from '@/server/page-context';
-import { getCalendarMonth, getDayDetail } from '@/server/services/calendar';
+import {
+  getCalendarMonth, getCalendarRange, getDayDetail, type CalendarMonth,
+} from '@/server/services/calendar';
 import { canWrite } from '@/server/auth';
-import { addCalendarDays, formatDateIn, formatTimeIn, monthRange, todayIn } from '@/lib/dates';
+import {
+  addCalendarDays, formatDateIn, formatTimeIn, monthRange, startOfWeek, todayIn, weekDates,
+} from '@/lib/dates';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/feedback';
 import { Stat } from '@/components/ui/labels';
 import { MonthGrid, type DayCell } from '@/components/calendar/month-grid';
+import { WeekGrid } from '@/components/calendar/week-grid';
+import { AgendaList } from '@/components/calendar/agenda-list';
 import { TaskRow } from '@/components/task-row';
 
 export const metadata = { title: 'Calendar' };
@@ -33,17 +39,47 @@ export default async function CalendarPage({
 
   const selectedDate = one(params.date) ?? today;
 
-  const [calendar, day] = await Promise.all([
-    getCalendarMonth(workspace, safeYear, safeMonth),
+  const viewParam = one(params.view);
+  const view: CalendarView =
+    viewParam === 'week' || viewParam === 'agenda' ? viewParam : 'month';
+
+  // Each layout loads only the window it draws. The month view keeps its own
+  // loader because it pads into the adjacent months to fill the grid.
+  const [range, day] = await Promise.all([
+    view === 'month'
+      ? getCalendarMonth(workspace, safeYear, safeMonth)
+      : view === 'week'
+        ? getCalendarRange(workspace, weekStart(selectedDate), weekEnd(selectedDate))
+        : getCalendarRange(workspace, agendaStart(today), agendaEnd(today)),
     getDayDetail(workspace, selectedDate),
   ]);
 
-  const cells = buildCells(safeYear, safeMonth, today, calendar);
+  const cells =
+    view === 'month'
+      ? buildCells(safeYear, safeMonth, today, range)
+      : view === 'week'
+        ? buildRangeCells(weekDates(selectedDate), today, range)
+        : buildRangeCells(datesBetween(agendaStart(today), agendaEnd(today)), today, range);
+
   const writable = canWrite(workspace.role);
 
   const prev = shiftMonth(safeYear, safeMonth, -1);
   const next = shiftMonth(safeYear, safeMonth, 1);
   const monthLabel = formatDateIn(`${safeYear}-${String(safeMonth).padStart(2, '0')}-01`, undefined, 'MMMM yyyy');
+
+  // The week and agenda layouts step by week and have their own labels; the
+  // month arrows would otherwise move a window the user cannot see.
+  const weekPrev = addCalendarDays(weekStart(selectedDate), -7);
+  const weekNext = addCalendarDays(weekStart(selectedDate), 7);
+  const rangeLabel =
+    view === 'week'
+      ? `${formatDateIn(weekStart(selectedDate), undefined, 'd MMM')} – ${formatDateIn(weekEnd(selectedDate), undefined, 'd MMM yyyy')}`
+      : view === 'agenda'
+        ? 'Next 6 weeks'
+        : monthLabel;
+
+  const viewHref = (next: CalendarView) =>
+    `/calendar?workspace=${workspace.id}&view=${next}&month=${safeYear}-${String(safeMonth).padStart(2, '0')}&date=${selectedDate}`;
 
   return (
     <>
@@ -51,27 +87,93 @@ export default async function CalendarPage({
         title="Calendar"
         description={`${workspace.name} · times shown in ${workspace.timezone}`}
         actions={
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" asChild aria-label="Previous month">
-              <Link href={`/calendar?workspace=${workspace.id}&month=${prev}&date=${selectedDate}`}>
-                <ChevronLeft />
-              </Link>
-            </Button>
-            <span className="min-w-32 text-center text-sm font-medium text-ink">{monthLabel}</span>
-            <Button variant="ghost" size="icon" asChild aria-label="Next month">
-              <Link href={`/calendar?workspace=${workspace.id}&month=${next}&date=${selectedDate}`}>
-                <ChevronRight />
-              </Link>
-            </Button>
+          <div className="flex flex-wrap items-center gap-1">
+            <nav aria-label="Calendar layout" className="mr-1 flex rounded-md border border-hairline">
+              {(['month', 'week', 'agenda'] as const).map((option) => (
+                <Link
+                  key={option}
+                  href={viewHref(option)}
+                  aria-current={view === option ? 'page' : undefined}
+                  className={
+                    view === option
+                      ? 'bg-sunken px-2.5 py-1 text-xs font-medium capitalize text-ink first:rounded-l-md last:rounded-r-md'
+                      : 'px-2.5 py-1 text-xs capitalize text-ink-soft hover:text-ink first:rounded-l-md last:rounded-r-md'
+                  }
+                >
+                  {option}
+                </Link>
+              ))}
+            </nav>
+
+            {view === 'agenda' ? null : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  aria-label={view === 'week' ? 'Previous week' : 'Previous month'}
+                >
+                  <Link
+                    href={
+                      view === 'week'
+                        ? `/calendar?workspace=${workspace.id}&view=week&date=${weekPrev}`
+                        : `/calendar?workspace=${workspace.id}&month=${prev}&date=${selectedDate}`
+                    }
+                  >
+                    <ChevronLeft />
+                  </Link>
+                </Button>
+                <span className="min-w-32 text-center text-sm font-medium text-ink">
+                  {rangeLabel}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  aria-label={view === 'week' ? 'Next week' : 'Next month'}
+                >
+                  <Link
+                    href={
+                      view === 'week'
+                        ? `/calendar?workspace=${workspace.id}&view=week&date=${weekNext}`
+                        : `/calendar?workspace=${workspace.id}&month=${next}&date=${selectedDate}`
+                    }
+                  >
+                    <ChevronRight />
+                  </Link>
+                </Button>
+              </>
+            )}
+
             <Button variant="default" size="sm" asChild>
-              <Link href={`/calendar?workspace=${workspace.id}&date=${today}`}>Today</Link>
+              <Link href={`/calendar?workspace=${workspace.id}&view=${view}&date=${today}`}>
+                Today
+              </Link>
             </Button>
           </div>
         }
       />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_22rem]">
-        <MonthGrid cells={cells} selected={selectedDate} canWrite={writable} />
+        {view === 'month' ? (
+          <MonthGrid cells={cells} selected={selectedDate} canWrite={writable} />
+        ) : view === 'week' ? (
+          <WeekGrid
+            cells={cells}
+            selected={selectedDate}
+            canWrite={writable}
+            workspaceId={workspace.id}
+            timedLabel={(instant) => formatTimeIn(instant, workspace.timezone)}
+          />
+        ) : (
+          <AgendaList
+            cells={cells}
+            today={today}
+            workspaceId={workspace.id}
+            timedLabel={(instant) => formatTimeIn(instant, workspace.timezone)}
+            dayLabel={(date) => formatDateIn(date, undefined, 'EEE d MMM')}
+          />
+        )}
 
         <aside className="min-w-0 space-y-3">
           <div>
@@ -252,7 +354,9 @@ function buildCells(
   year: number,
   month: number,
   today: string,
-  calendar: Awaited<ReturnType<typeof getCalendarMonth>>,
+  // Only the three maps are read; the year and month come in as arguments, so
+  // this accepts a plain range as well as a loaded month.
+  calendar: Omit<CalendarMonth, 'year' | 'month'>,
 ): DayCell[] {
   const { first, last } = monthRange(year, month);
 
@@ -275,7 +379,7 @@ function buildCells(
         id: t.id, title: t.title, status: t.status, priority: t.priority,
       })),
       events: (calendar.eventsByDate.get(cursor) ?? []).map((e) => ({
-        id: e.id, title: e.title, isAllDay: e.isAllDay,
+        id: e.id, title: e.title, isAllDay: e.isAllDay, startsAt: e.startsAt,
       })),
       milestones: (calendar.milestonesByDate.get(cursor) ?? []).map((m) => ({
         id: m.id, name: m.name,
@@ -284,6 +388,50 @@ function buildCells(
     cursor = addCalendarDays(cursor, 1);
   }
   return cells;
+}
+
+type CalendarView = 'month' | 'week' | 'agenda';
+
+const weekStart = (date: string) => startOfWeek(date);
+const weekEnd = (date: string) => addCalendarDays(startOfWeek(date), 6);
+
+// The agenda looks a little way back, so a task that slipped yesterday is
+// still in view rather than silently dropping off the list.
+const agendaStart = (today: string) => addCalendarDays(startOfWeek(today), -7);
+const agendaEnd = (today: string) => addCalendarDays(startOfWeek(today), 41);
+
+function datesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  let cursor = from;
+  for (let i = 0; i < 400 && cursor <= to; i += 1) {
+    out.push(cursor);
+    cursor = addCalendarDays(cursor, 1);
+  }
+  return out;
+}
+
+/** Day cells for an explicit list of dates, for the week and agenda layouts. */
+function buildRangeCells(
+  dates: string[],
+  today: string,
+  calendar: Omit<CalendarMonth, 'year' | 'month'>,
+): DayCell[] {
+  return dates.map((date) => ({
+    date,
+    // Every day in these layouts is in scope; `inMonth` only dims the
+    // adjacent-month padding the month grid draws.
+    inMonth: true,
+    isToday: date === today,
+    tasks: (calendar.tasksByDate.get(date) ?? []).map((t) => ({
+      id: t.id, title: t.title, status: t.status, priority: t.priority,
+    })),
+    events: (calendar.eventsByDate.get(date) ?? []).map((e) => ({
+      id: e.id, title: e.title, isAllDay: e.isAllDay, startsAt: e.startsAt,
+    })),
+    milestones: (calendar.milestonesByDate.get(date) ?? []).map((m) => ({
+      id: m.id, name: m.name,
+    })),
+  }));
 }
 
 function shiftMonth(year: number, month: number, delta: number): string {

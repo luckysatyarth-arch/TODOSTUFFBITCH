@@ -11,7 +11,9 @@ export interface DayCell {
   inMonth: boolean;
   isToday: boolean;
   tasks: Array<{ id: string; title: string; status: string; priority: string }>;
-  events: Array<{ id: string; title: string; isAllDay: boolean }>;
+  // startsAt is carried for the week view, which has room to show a time;
+  // the month cells only have room for a glyph.
+  events: Array<{ id: string; title: string; isAllDay: boolean; startsAt?: string | null }>;
   milestones: Array<{ id: string; name: string }>;
 }
 
