@@ -132,8 +132,8 @@ Status key:
 | Production build | Passes, 22 routes |
 | TypeScript strict, `noUncheckedIndexedAccess` | Passes with no errors |
 | ESLint | Passes with no errors or warnings |
-| Unit tests | 74 passing |
+| Unit tests | 79 passing |
 | Integration tests | 24, skip cleanly without credentials |
-| e2e tests | Playwright, auth gate and endpoint refusals |
+| e2e tests | 20 passing: auth gate on 11 protected routes, cron and webhook refusals, accessibility and phone-width checks. 7 signed-in journeys skip until the demo data is seeded |
 | Supabase security advisors | Clean, apart from the three intentional deny-all tables |
 | Dependencies pinned, lockfile committed | Yes, 0 vulnerabilities at install |

@@ -120,6 +120,13 @@ To run the integration tests, which need the service role key:
 node --env-file=.env.local ./node_modules/.bin/vitest run tests/integration
 ```
 
+On a machine whose Chromium sits at a fixed path rather than the revision
+Playwright would download (common in CI images), point at it:
+
+```bash
+PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run test:e2e
+```
+
 ## Architecture
 
 ```

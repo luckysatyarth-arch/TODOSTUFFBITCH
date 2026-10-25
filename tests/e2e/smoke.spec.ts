@@ -48,7 +48,9 @@ test.describe('unauthenticated access', () => {
     await page.getByLabel('Password').fill('wrong-password-12345');
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    const alert = page.getByRole('alert');
+    // Scoped to the form: Next injects its own empty role="alert" region for
+    // route announcements, so a bare getByRole('alert') matches two elements.
+    const alert = page.locator('form [role="alert"]');
     await expect(alert).toBeVisible();
     // Deliberately generic, so the form cannot be used to enumerate accounts.
     await expect(alert).toContainText(/did not work/i);

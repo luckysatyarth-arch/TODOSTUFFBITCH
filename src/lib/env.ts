@@ -62,11 +62,33 @@ const serverSchema = z.object({
   NOTION_CLIENT_SECRET: z.string().optional(),
 });
 
+
+/**
+ * Drops keys whose value is blank.
+ *
+ * A `.env` file written from `.env.example` carries every optional key as an
+ * empty string. An empty string is *present*, so `.optional()` does not apply
+ * to it and a `min()` check fails -- which would turn "I left the optional AI
+ * key blank" into a 500 on every server route. Operationally an unset
+ * variable and a blank one mean the same thing, so they are normalised here
+ * before validation.
+ */
+export function withoutBlanks(
+  source: Record<string, string | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'string' && value.trim() !== '') out[key] = value;
+  }
+  return out;
+}
+
 function readCore() {
+  const env = withoutBlanks(process.env);
   const parsed = coreSchema.safeParse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_SUPABASE_URL: env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_APP_URL: env.NEXT_PUBLIC_APP_URL,
   });
 
   if (!parsed.success) {
@@ -91,7 +113,7 @@ export function serverEnv() {
   if (typeof window !== 'undefined') {
     throw new Error('serverEnv() must not be called in client code');
   }
-  const parsed = serverSchema.safeParse(process.env);
+  const parsed = serverSchema.safeParse(withoutBlanks(process.env));
   if (!parsed.success) {
     const detail = parsed.error.issues
       .map((i) => `  ${i.path.join('.')}: ${i.message}`)

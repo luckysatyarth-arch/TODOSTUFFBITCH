@@ -14,7 +14,21 @@ export default defineConfig({
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${PORT}`,
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        // CI images often ship a Chromium at a fixed path that does not match
+        // the revision this Playwright version would download. Point at it
+        // when PLAYWRIGHT_CHROMIUM_PATH is set; otherwise use the managed
+        // browser as normal.
+        ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
+          ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } }
+          : {}),
+      },
+    },
+  ],
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
