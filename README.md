@@ -134,7 +134,8 @@ src/
   app/
     (auth)/            login, signup, server actions
     (app)/             the authenticated shell and every screen
-    api/cron/          scheduled report run and retry sweep
+    api/cron/          daily reports, delivery retries, connector sync
+    api/integrations/  OAuth start and callback, one pair per provider family
     api/webhooks/      inbound WhatsApp (signature-verified)
   components/          UI primitives and feature components
   lib/
@@ -193,6 +194,7 @@ so it cannot drift across the date line. Timed events are stored as
 3. Deploy. `vercel.json` registers the cron jobs automatically:
    - `30 15 * * *` → `/api/cron/daily-reports` (21:00 IST)
    - `0 * * * *` → `/api/cron/retry-deliveries`
+   - `15 */6 * * *` → `/api/cron/sync-connectors`
 4. **Verify the schedule after deploying**, which the brief asks for
    explicitly:
 
@@ -211,8 +213,11 @@ If that is not 21:00 at the scheduled firing, the cron expression or
 at the wrong hour.
 
 Vercel's Hobby plan runs cron jobs once a day and does not guarantee the
-minute. The hourly retry sweep needs a paid plan; without it, a delivery that
-failed at 21:00 retries at the next daily run.
+minute. The hourly retry sweep and the 6-hourly connector sync need a paid
+plan; without it, a delivery that failed at 21:00 retries at the next daily
+run, and connectors sync once a day. Internal records do not depend on that
+schedule — they are indexed inline as they are written, and the sweep only
+catches up anything a failed inline write missed.
 
 ## Security
 

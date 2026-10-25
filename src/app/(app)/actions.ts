@@ -14,6 +14,9 @@ import {
 } from '@/lib/validation/projects';
 import { uuid } from '@/lib/validation/common';
 import type { Database } from '@/lib/supabase/database.types';
+import {
+  onNoteChanged, onProjectChanged, onRecordDeleted, onTaskChanged,
+} from '@/server/services/index-hooks';
 
 type TaskUpdate = Database['public']['Tables']['tasks']['Update'];
 type ProjectUpdate = Database['public']['Tables']['projects']['Update'];
@@ -93,6 +96,17 @@ export async function createTask(raw: unknown): Promise<ActionResult<{ id: strin
       .single();
 
     if (error) throw new Error(error.message);
+
+    // Best-effort: a stale index must never fail the write.
+    await onTaskChanged(input.workspaceId, {
+      id: data.id,
+      title: input.title,
+      description: input.description ?? null,
+      status: input.status,
+      priority: input.priority,
+      due_date: input.dueDate ?? null,
+    });
+
     revalidateWorkspace();
     return { ok: true, data: { id: data.id } };
   } catch (error) {
@@ -124,8 +138,15 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
 
     if (Object.keys(patch).length === 0) return { ok: true };
 
-    const { error } = await supabase.from('tasks').update(patch).eq('id', input.id);
+    const { data: saved, error } = await supabase
+      .from('tasks')
+      .update(patch)
+      .eq('id', input.id)
+      .select('id, title, description, status, priority, due_date')
+      .single();
     if (error) throw new Error(error.message);
+
+    if (saved) await onTaskChanged(workspaceId, saved);
 
     revalidateWorkspace();
     return { ok: true };
@@ -190,6 +211,10 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
     const { supabase } = await writeContext(workspaceId);
     const { error } = await supabase.from('tasks').delete().eq('id', id);
     if (error) throw new Error(error.message);
+
+    // Otherwise the task would keep appearing in search after deletion.
+    await onRecordDeleted(workspaceId, 'internal_task', id);
+
     revalidateWorkspace();
     return { ok: true };
   } catch (error) {
@@ -271,6 +296,14 @@ export async function createProject(raw: unknown): Promise<ActionResult<{ id: st
       .single();
 
     if (error) throw new Error(error.message);
+
+    await onProjectChanged(input.workspaceId, {
+      id: data.id,
+      name: input.name,
+      description: input.description ?? null,
+      status: input.status,
+    });
+
     revalidateWorkspace();
     return { ok: true, data: { id: data.id } };
   } catch (error) {
@@ -298,8 +331,16 @@ export async function updateProject(raw: unknown): Promise<ActionResult> {
     if (input.targetDate !== undefined) patch.target_date = input.targetDate;
     if (Object.keys(patch).length === 0) return { ok: true };
 
-    const { error } = await client.from('projects').update(patch).eq('id', input.id);
+    const { data: saved, error } = await client
+      .from('projects')
+      .update(patch)
+      .eq('id', input.id)
+      .select('id, name, description, status')
+      .single();
     if (error) throw new Error(error.message);
+
+    if (saved) await onProjectChanged(data.workspace_id, saved);
+
     revalidateWorkspace();
     return { ok: true };
   } catch (error) {
@@ -394,6 +435,11 @@ export async function createNote(raw: unknown): Promise<ActionResult<{ id: strin
       author_id: session.userId,
     }).select('id').single();
     if (error) throw new Error(error.message);
+
+    await onNoteChanged(input.workspaceId, {
+      id: data.id, title: input.title, body: input.body,
+    });
+
     revalidateWorkspace();
     return { ok: true, data: { id: data.id } };
   } catch (error) {

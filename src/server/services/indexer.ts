@@ -218,3 +218,148 @@ export async function indexWorkspaceRecords(
 
   return indexDocuments(client, workspaceId, null, null, documents);
 }
+
+/**
+ * Indexes a single internal record immediately, text only.
+ *
+ * Called from the task, project and note write paths so internal search is
+ * fresh the moment something is created or renamed. Deliberately skips
+ * chunking and embeddings: those cost a network round trip and belong in the
+ * batch pass, so keyword search is immediate and semantic search is
+ * eventually consistent.
+ *
+ * Best-effort by contract. A failure here must never fail the user's write,
+ * so callers swallow the error and the next full reindex repairs the gap.
+ */
+export async function indexOneRecord(
+  client: Admin,
+  workspaceId: string,
+  document: NormalisedDocument,
+  ownerId: string | null = null,
+): Promise<void> {
+  const contentHash = hashContent(document.title, document.content);
+
+  const { data: existing } = await client
+    .from('indexed_documents')
+    .select('id, content_hash')
+    .eq('workspace_id', workspaceId)
+    .eq('source_type', document.sourceType)
+    .eq('source_record_id', document.sourceRecordId)
+    .maybeSingle();
+
+  if (existing?.content_hash === contentHash) return;
+
+  const row = {
+    workspace_id: workspaceId,
+    integration_id: null,
+    source_type: document.sourceType,
+    source_record_id: document.sourceRecordId,
+    title: document.title,
+    excerpt: document.excerpt ?? document.content.slice(0, 400),
+    url: document.url,
+    content: document.content,
+    author: document.author,
+    source_timestamp: document.sourceTimestamp,
+    access_scope: document.accessScope,
+    // An `owner_only` row without an owner is rejected by the table's CHECK,
+    // so the scope and the owner have to be set from the same decision.
+    owner_id: document.accessScope === 'owner_only' ? ownerId : null,
+    metadata: document.metadata as never,
+    content_hash: contentHash,
+    indexed_at: new Date().toISOString(),
+  };
+
+  if (existing) {
+    await client.from('indexed_documents').update(row).eq('id', existing.id);
+    // The content changed, so any chunks and embeddings now describe stale
+    // text. Drop them; the batch pass rebuilds them.
+    await client.from('document_chunks').delete().eq('document_id', existing.id);
+  } else {
+    await client.from('indexed_documents').insert(row);
+  }
+}
+
+/** Removes an internal record from the index when it is deleted. */
+export async function removeFromIndex(
+  client: Admin,
+  workspaceId: string,
+  sourceType: DocumentSource,
+  sourceRecordId: string,
+): Promise<void> {
+  await client
+    .from('indexed_documents')
+    .delete()
+    .eq('workspace_id', workspaceId)
+    .eq('source_type', sourceType)
+    .eq('source_record_id', sourceRecordId);
+}
+
+/** Shapes a task row for the index. Shared by the inline and batch paths. */
+export function taskDocument(
+  workspaceId: string,
+  task: {
+    id: string; title: string; description: string | null;
+    status: string; priority: string; due_date: string | null;
+    updated_at?: string | null; projectName?: string | null;
+  },
+): NormalisedDocument {
+  return {
+    sourceType: 'internal_task',
+    sourceRecordId: task.id,
+    title: task.title,
+    excerpt: task.description?.slice(0, 300) ?? null,
+    url: `/tasks/${task.id}?workspace=${workspaceId}`,
+    content: [
+      task.title,
+      task.description ?? '',
+      `status: ${task.status}`,
+      `priority: ${task.priority}`,
+      task.due_date ? `due: ${task.due_date}` : '',
+      task.projectName ? `project: ${task.projectName}` : '',
+    ].filter(Boolean).join('\n'),
+    author: null,
+    sourceTimestamp: task.updated_at ?? new Date().toISOString(),
+    accessScope: 'workspace',
+    metadata: { status: task.status, priority: task.priority },
+  };
+}
+
+export function projectDocument(
+  workspaceId: string,
+  project: {
+    id: string; name: string; description: string | null;
+    status: string; updated_at?: string | null;
+  },
+): NormalisedDocument {
+  return {
+    sourceType: 'internal_project',
+    sourceRecordId: project.id,
+    title: project.name,
+    excerpt: project.description?.slice(0, 300) ?? null,
+    url: `/projects/${project.id}?workspace=${workspaceId}`,
+    content: [project.name, project.description ?? '', `status: ${project.status}`]
+      .filter(Boolean).join('\n'),
+    author: null,
+    sourceTimestamp: project.updated_at ?? new Date().toISOString(),
+    accessScope: 'workspace',
+    metadata: { status: project.status },
+  };
+}
+
+export function noteDocument(
+  workspaceId: string,
+  note: { id: string; title: string; body: string; updated_at?: string | null },
+): NormalisedDocument {
+  return {
+    sourceType: 'internal_note',
+    sourceRecordId: note.id,
+    title: note.title,
+    excerpt: note.body.slice(0, 300),
+    url: `/notes?workspace=${workspaceId}`,
+    content: `${note.title}\n\n${note.body}`,
+    author: null,
+    sourceTimestamp: note.updated_at ?? new Date().toISOString(),
+    accessScope: 'workspace',
+    metadata: {},
+  };
+}

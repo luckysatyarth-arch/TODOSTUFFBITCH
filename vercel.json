@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/retry-deliveries",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-connectors",
+      "schedule": "15 */6 * * *"
     }
   ]
 }

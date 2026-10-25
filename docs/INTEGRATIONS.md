@@ -237,7 +237,27 @@ owner.
 
 ---
 
-## Scheduled reports
+## How connecting works
+
+Each provider family has one pair of routes:
+
+| Route | Does |
+| --- | --- |
+| `GET /api/integrations/{family}/start?provider=…&workspace=…` | Checks that you may write to the workspace and that the provider is configured, signs a state token, and redirects to the provider's consent screen |
+| `GET /api/integrations/{family}/callback` | Verifies the signed state, exchanges the code, stores the sealed tokens, runs a first sync, and returns you to `/integrations` |
+
+`{family}` is `google`, `microsoft` or `notion`. Drive and Gmail share the
+Google client, and Outlook mail and Teams share the Microsoft one, which is why
+the callback is per family and the specific provider travels inside the state.
+
+The state token is HMAC-signed and expires after 15 minutes. The callback also
+checks that the signed user id matches the session, so a captured start URL
+cannot be used to attach someone else's provider account to your workspace.
+
+Connect is a plain link rather than a form action, because the browser has to
+follow the redirect to the provider. Sync and Disconnect are server actions.
+
+## Scheduled jobs
 
 ```bash
 # openssl rand -hex 32
@@ -245,5 +265,18 @@ CRON_SECRET=<64 hex characters>
 REPORT_TIMEZONE=Asia/Kolkata
 ```
 
-`vercel.json` registers the schedule. After deploying, verify it — see the
-Deployment section of the README.
+`vercel.json` registers three schedules, all authenticated with `CRON_SECRET`:
+
+| Schedule | Route | Does |
+| --- | --- | --- |
+| `30 15 * * *` UTC | `/api/cron/daily-reports` | 21:00 Asia/Kolkata. Generates and delivers the daily reports |
+| `0 * * * *` | `/api/cron/retry-deliveries` | Retries deliveries that failed with a retryable error |
+| `15 */6 * * *` | `/api/cron/sync-connectors` | Syncs every connected integration, then re-sweeps internal records into the search index |
+
+Connector sync runs integrations one at a time rather than in parallel, to stay
+inside third-party rate limits. Every attempt writes a row to `sync_runs`,
+including the ones that did nothing, so a provider that is configured but
+unsupported is recorded as unsupported rather than silently skipped.
+
+After deploying, verify the schedule — see the Deployment section of the
+README.

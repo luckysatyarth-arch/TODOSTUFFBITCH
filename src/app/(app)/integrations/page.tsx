@@ -1,14 +1,17 @@
-import { resolvePageContext } from '@/server/page-context';
+import { resolvePageContext, one } from '@/server/page-context';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { canManage } from '@/server/auth';
 import { capabilities } from '@/lib/env';
 import { allConnectors } from '@/server/connectors/registry';
 import { getWhatsAppAdapter, allWhatsAppAdapters } from '@/server/connectors/whatsapp';
 import { formatDateIn } from '@/lib/dates';
+import { oauthFamily } from '@/server/connectors/oauth';
+import { ConnectorControls } from '@/components/integrations/connector-controls';
+import { ReindexButton } from '@/components/integrations/reindex-button';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SetupNotice } from '@/components/ui/feedback';
+import { ErrorNotice, SetupNotice } from '@/components/ui/feedback';
 import type { Database } from '@/lib/supabase/database.types';
 
 export const metadata = { title: 'Integrations' };
@@ -20,7 +23,7 @@ export default async function IntegrationsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { session, workspace } = await resolvePageContext(searchParams);
+  const { session, workspace, params } = await resolvePageContext(searchParams);
   const supabase = await createSupabaseServerClient();
   const caps = capabilities();
 
@@ -52,6 +55,21 @@ export default async function IntegrationsPage({
         title="Integrations"
         description="Each connector lists what it can actually do, and what it cannot."
       />
+
+      {/* The OAuth start and callback routes redirect back here with these. */}
+      {one(params.error) ? (
+        <ErrorNotice
+          className="mb-4"
+          title="Could not connect"
+          detail={one(params.error)}
+        />
+      ) : null}
+
+      {one(params.notice) ? (
+        <p className="mb-4 rounded-md border border-done/30 bg-done-soft px-3 py-2 text-xs text-done">
+          {one(params.notice)}
+        </p>
+      ) : null}
 
       {!caps.credentialEncryption ? (
         <SetupNotice
@@ -147,6 +165,19 @@ export default async function IntegrationsPage({
                     {run.error ? ` · ${run.error}` : ''}
                   </p>
                 ) : null}
+
+                <ConnectorControls
+                  provider={connector.provider}
+                  family={oauthFamily(connector.provider)}
+                  workspaceId={workspace.id}
+                  integrationId={record?.id ?? null}
+                  configured={connector.isConfigured()}
+                  canConnect={
+                    // A per-user connector is the user's own; a workspace-level
+                    // one changes what the whole team can reach.
+                    connector.provider === 'whatsapp' ? isAdmin : true
+                  }
+                />
               </CardContent>
             </Card>
           );
@@ -211,6 +242,25 @@ export default async function IntegrationsPage({
                 report fans out to individual numbers instead.
               </p>
             ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Internal search index</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-ink-soft">
+              Tasks, projects, comments and notes are indexed automatically: a write updates the
+              keyword index immediately, and the scheduled pass adds the chunks and embeddings
+              that semantic search needs. Rebuild it by hand after changing the embeddings
+              configuration, or to backfill records created before this deployment.
+            </p>
+            {isAdmin ? (
+              <ReindexButton workspaceId={workspace.id} />
+            ) : (
+              <p className="text-[11px] text-ink-faint">
+                Rebuilding the index needs an owner or admin role.
+              </p>
+            )}
           </CardContent>
         </Card>
 

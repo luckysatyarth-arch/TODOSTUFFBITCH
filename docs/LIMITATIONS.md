@@ -74,18 +74,37 @@ inside one.
 setting, and chunk the result through the existing `indexDocuments` path,
 which already handles chunking and embedding.
 
-### No scheduled worker drives the job queue
+### No general worker drives the job queue
 
-`job_runs` exists with claim, retry and lock semantics, and the report cron
-uses the same durable-record pattern. But no worker polls the queue, so
-transcription and extraction currently run inline in the request that triggers
-them. Audio is uploaded directly to storage, so a long recording does not hold
-a request open — but a slow transcription does.
+`job_runs` exists with claim, retry and lock semantics, and three crons use the
+same durable-record pattern: report generation, delivery retries, and connector
+sync plus re-indexing. What is still missing is a *general* worker that polls
+the queue, so transcription and extraction run inline in the request that
+triggers them. Audio is uploaded directly to storage, so a long recording does
+not hold a request open — but a slow transcription does.
 
 **Next step:** add `/api/cron/run-jobs`, claim with `FOR UPDATE SKIP LOCKED`,
-and move transcription, embedding and connector sync onto it. The handlers are
-already separate functions that take a client, so they can be called from a
-worker unchanged.
+and move transcription and embedding onto it. The handlers are already separate
+functions that take a client, so they can be called from a worker unchanged.
+
+### Internal search retrieval has not been run against a populated index
+
+Tasks, projects and notes are written into `indexed_documents` inline on every
+create, update and delete, and swept again by the 6-hourly cron. The query side
+— `search_documents_fts` returning those rows, and an `owner_only` document
+staying out of another member's results — was verified by reading the policies
+and the function definitions, but not by executing a search against a populated
+index: database access was withdrawn from this environment before that check
+could be run.
+
+The authorization properties it would confirm *are* covered elsewhere: the
+integration tests assert that one member cannot read another's personal
+records, and the search function is `SECURITY INVOKER`, so it is the same RLS
+predicate doing the work in both cases. Treat the retrieval path itself as
+unverified until a search has been run against real indexed rows.
+
+**Next step:** create a task in each of two workspaces, run the search as each
+member, and confirm both the hits and the absence of the other member's rows.
 
 ### Recurring tasks are modelled but not expanded
 
@@ -155,13 +174,15 @@ authorization boundary.
 1. **Register the WhatsApp template** and verify the group limits against
    Meta's documentation. These are the only things standing between the
    reporting pipeline and live production delivery.
-2. **Add the job worker.** It unblocks background transcription, connector
-   sync on a schedule, and re-indexing — three features that are otherwise
-   complete but driven manually.
-3. **Deepen connector indexing** behind a setting, starting with Drive
+2. **Run the internal search path once against a populated index**, which is
+   the one acceptance criterion that was implemented but never executed.
+3. **Add the general job worker.** Connector sync and re-indexing are now on a
+   cron; the worker is what remains for background transcription and
+   embedding.
+4. **Deepen connector indexing** behind a setting, starting with Drive
    document export, which is the most valuable and the best documented.
-4. **Expand recurring tasks**, which is self-contained and well covered by the
+5. **Expand recurring tasks**, which is self-contained and well covered by the
    existing trigger tests.
-5. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
+6. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
    of thousand tasks.
-6. **Add week and agenda calendar layouts**, which need no new data.
+7. **Add week and agenda calendar layouts**, which need no new data.

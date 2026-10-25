@@ -9,6 +9,8 @@ Status key:
 - **Needs credentials** — the code path is complete; it needs a provider key
   or OAuth client to do anything. The UI reports it as requiring setup rather
   than appearing to work.
+- **Partial** — some of the feature works and some of it does not. The note
+  says which part is missing.
 - **Not supported** — cannot be done, with the reason given. These are not
   omissions to fill in later.
 
@@ -87,19 +89,34 @@ Status key:
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Internal full-text search | Implemented | Generated `tsvector` column with a GIN index |
+| Internal full-text search | Implemented, retrieval unverified | Generated `tsvector` column with a GIN index. Tasks, projects and notes are written to the index inline on every create, update and delete, and re-swept by cron. The query path has not been run against a populated index; see `LIMITATIONS.md` |
 | Semantic search | Needs credentials | pgvector with an HNSW index; needs an embeddings key |
 | Permissions applied before retrieval | Implemented | `SECURITY INVOKER` functions, so RLS filters inside the query |
-| Owner-only documents excluded from others' results | Implemented | `access_scope` plus an RLS predicate |
+| Owner-only documents excluded from others' results | Implemented | `access_scope` plus an RLS predicate. A row marked `owner_only` without an owner is rejected by a table CHECK, so the privacy flag cannot be set without someone to own it |
+| Internal records reach the index | Implemented, unverified | Inline hooks on the task, project and note write paths, plus a 6-hourly sweep. Index writes are deliberately non-fatal: a failure logs and leaves the user's write committed |
 | Grounded answers with citations | Needs credentials | Must cite `[n]` records; inferences shown separately from stated fact |
 | Insufficient evidence as a real answer | Implemented | A first-class outcome, not a guess |
 | Rate limiting | Implemented | Per user, per hour, table-backed |
+
+### Connectors
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| OAuth connect flow | Implemented | `/api/integrations/{family}/start` and `/callback`, one callback per provider family. State is HMAC-signed with a 15-minute TTL, and the callback refuses a state whose user id is not the signed-in user, so a connection cannot be attached to someone else's workspace |
+| Credential encryption at rest | Tested | AES-256-GCM in a separate `integration_credentials` table with RLS on and no policies, so it is unreachable except through the service role. Unit tests cover the round trip and tamper detection |
+| Token refresh | Implemented | Refreshed two minutes ahead of expiry; a credential that will not decrypt sets the integration to `error` and asks for a reconnect rather than retrying forever |
+| Scheduled sync | Implemented | `15 */6 * * *`, sequentially per integration to stay inside third-party rate limits. Every attempt writes a sync-run row, and an unsupported provider is recorded as unsupported rather than failed |
 | Google Drive | Needs credentials | Metadata-level indexing; document bodies not exported |
 | Gmail | Needs credentials | Read-only scope, headers and snippet only |
 | Outlook mail (Graph) | Needs credentials | Read-only |
 | Microsoft Teams | Needs credentials + tenant consent | Private channels inaccessible under delegated permissions |
 | Notion | Needs credentials | Only explicitly shared pages; titles and properties, not block bodies; no delta cursor |
-| Background re-indexing job | Partial | The indexer and job table exist; no scheduled worker drives them yet |
+
+No provider adapter has been run against a live third-party account. The
+authorization flow, encryption, refresh and sync runner are implemented and the
+adapters are written against each provider's documented API, but until a real
+OAuth client is configured, treat every row marked *Needs credentials* as
+untested against the provider itself.
 
 ## Daily 9 PM IST reporting
 
