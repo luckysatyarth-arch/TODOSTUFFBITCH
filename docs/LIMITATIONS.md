@@ -4,27 +4,30 @@ Written to be useful rather than reassuring. Everything here is either a real
 constraint of an external platform, or a deliberate scope decision — not a
 list of things that quietly do not work.
 
-## Read this first: migrations 0010 and 0011 are not applied to the hosted project
+## Database state
 
-Migrations 0001–0009 were applied to the Supabase project this was developed
-against. **0010 (recurrence) and 0011 (the job queue) have not been**, because
-access to that project was withdrawn from the environment the work was done in
-before they could be run.
+All twelve migrations are applied to the Supabase project
+`opirienxtsewxoolsaba` and verified against it: 29 tables, all with RLS, 52
+policies, the three deliberate deny-all tables, 22 helper functions, the
+pgvector HNSW index and both storage buckets — matching what
+`npm run db:verify` produces locally.
 
-Both are verified — they apply cleanly to a stock PostgreSQL 16 and pass 70 SQL
-checks under `npm run db:verify` — but on the hosted database the recurrence
-column still has no CHECK, no `recurrence_spawned_task_id` and no trigger, and
-the queue functions do not exist, so completing a recurring task there does
-nothing and the worker route returns an error. Apply them before relying on
-either:
+The behaviour was checked on that database too, inside a transaction that
+rolled back: the signup trigger provisions a profile, a personal workspace and
+an owner membership; a second personal workspace is refused; a forged
+`completed_at` is discarded; an invalid recurrence rule is refused; a monthly
+series anchored on the 31st returns 2026-03-31 after February rather than
+drifting; completing it spawns exactly one successor and re-completing does not
+fork the series; a cross-workspace project reference is refused; `enqueue_job`
+is idempotent on its key; a second worker claims nothing the first holds; and a
+non-retryable failure goes straight to `dead`.
 
-```bash
-DATABASE_URL='postgresql://...' npm run db:push
-```
+`src/lib/supabase/database.types.ts` is regenerated from that schema, so it no
+longer carries any hand-added declarations.
 
-`src/lib/supabase/database.types.ts` carries a hand-added column and five
-hand-added function signatures for the same reason; regenerating the types
-after applying both produces the same file.
+A demo user is seeded for the e2e suite: `alice@demo.test` /
+`demo-password-1`, with a team workspace, a project, six tasks (one
+recurring), a milestone, a note and two calendar events.
 
 ## Hard limitations, imposed by external platforms
 
@@ -122,7 +125,7 @@ batch and double-count attempts against the jobs that succeeded. Watch the
 `dead` count in the response, not the status code — that is the number that
 have given up and need a person.
 
-### Integration tests still need a hosted project, but the schema does not
+### The schema can be verified without a hosted project
 
 `npm run db:verify` applies the migrations to a throwaway local PostgreSQL
 cluster and runs the authorization checks against it, as the `authenticated`
@@ -133,12 +136,12 @@ no service-role key. See `supabase/local/README.md`.
 
 What it does not cover is the application code path: the Vitest integration
 tests exercise the server actions through a real Supabase client, and those
-still need a hosted project and `SUPABASE_SERVICE_ROLE_KEY` (they create and
-delete confirmed users, which only the service role can do). They skip
-themselves when it is absent rather than passing vacuously — so a CI pipeline
-that supplies neither the key nor `npm run db:verify` is not exercising the
-authorization boundary at all. `db:verify` needs no credentials, so it is the
-one to put in CI first.
+need `SUPABASE_SERVICE_ROLE_KEY` (they create and delete confirmed users,
+which only the service role can do) plus network access to the project. They
+skip themselves when either is missing rather than passing vacuously — so a CI
+pipeline that supplies neither the key nor `npm run db:verify` is not
+exercising the authorization boundary at all. `db:verify` needs no credentials
+and no network, so it is the one to put in CI first.
 
 The local harness also cannot say anything about the provider adapters, which
 need real OAuth clients and live accounts.
@@ -166,24 +169,25 @@ between the two days.
 for reporting tasks -- add a `setpos` field to the rule rather than widening
 `freq`.
 
-### The authenticated screens are not covered by an automated test run here
+### The signed-in screens still have no passing test run in this environment
 
-The e2e suite has 20 passing tests (the login gate, every protected route,
-the generic failure message, accessibility and phone-width layout) and 9 that
-sign in first. Those 9 skip without a seeded database, and they skipped on
-every run during this work: the hosted project became unreachable, and a local
-Supabase stack could not be started because this environment caps registry
-data transfer, so its images cannot be pulled.
+The e2e suite has 20 passing tests (the login gate, every protected route, the
+generic failure message, the cron and webhook rejections, accessibility and
+phone-width layout) and 9 that sign in first. Those 9 still skip, now for a
+different reason than before: the database is live and seeded, but this
+environment's network policy denies outbound HTTPS to
+`opirienxtsewxoolsaba.supabase.co`, so the app running here cannot reach it.
+Sign-in fails, and the specs skip rather than fail.
 
 What that leaves unverified is whether the signed-in screens render against
 real rows and whether the server actions round-trip. The type checker, the
-production build and 122 unit tests cover a good deal of it, and the 88 SQL
-checks cover the authorization rules underneath. The gap is the rendering and
-the round trip, and it is a real gap.
+production build, 135 unit tests and 115 SQL checks cover a good deal of it,
+and the behaviour checks above were run against the real database — but
+through SQL, not through the application.
 
-To close it: `npm run db:seed` with a service-role key, then
-`npx playwright test`. The specs are written, including for the calendar
-layouts; they need only a database to run against.
+To close it: allow that host in the environment's network settings, then
+`npx playwright test`. Nothing else is missing; the specs and the data are
+both in place.
 
 ### No OAuth sign-in
 
@@ -240,5 +244,6 @@ counts into SQL views alongside `project_progress`.
    express.
 5. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
    of thousand tasks.
-6. **Seed a database and run the signed-in e2e specs**, which are written and
-   currently skip.
+6. **Allow the project host in the environment's network settings and run the
+   signed-in e2e specs**, which are written, seeded, and currently skip for
+   want of outbound access.

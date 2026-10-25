@@ -60,12 +60,15 @@ export async function enqueueJob(
   payload: Record<string, unknown> = {},
   options: { idempotencyKey?: string; runAfter?: Date; maxAttempts?: number } = {},
 ): Promise<string | null> {
+  // Absent arguments are omitted rather than sent as null, so the function's
+  // own defaults apply. PostgREST treats a missing key and an explicit null
+  // differently, and the generated types say so.
   const { data, error } = await client.rpc('enqueue_job', {
     p_job_type: jobType,
     p_payload: payload as Json,
-    p_idempotency_key: options.idempotencyKey ?? null,
-    p_run_after: options.runAfter?.toISOString() ?? null,
     p_max_attempts: options.maxAttempts ?? 5,
+    ...(options.idempotencyKey ? { p_idempotency_key: options.idempotencyKey } : {}),
+    ...(options.runAfter ? { p_run_after: options.runAfter.toISOString() } : {}),
   });
 
   if (error) throw new Error(`Could not enqueue ${jobType}: ${error.message}`);

@@ -79,7 +79,8 @@ npx supabase db push
 numerical order**. The order matters: later migrations depend on the enums,
 helper functions and tables created by earlier ones.
 
-Then confirm the result:
+All twelve are already applied to the project this was developed against; the
+runner reports "Up to date" there. Then confirm the result:
 
 ```sql
 -- Should list 29 tables, every one with RLS enabled.
