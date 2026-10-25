@@ -6,7 +6,7 @@ list of things that quietly do not work.
 
 ## Database state
 
-All twelve migrations are applied to the Supabase project
+Migrations 0001–0012 are applied to the Supabase project
 `opirienxtsewxoolsaba` and verified against it: 29 tables, all with RLS, 52
 policies, the three deliberate deny-all tables, 22 helper functions, the
 pgvector HNSW index and both storage buckets — matching what
@@ -24,6 +24,22 @@ non-retryable failure goes straight to `dead`.
 
 `src/lib/supabase/database.types.ts` is regenerated from that schema, so it no
 longer carries any hand-added declarations.
+
+**0013 is written and locally verified but not applied.** It splits seven
+`for all` write policies into per-action policies and adds twenty covering
+indexes for foreign keys, both from Supabase's performance linter. Applying it
+needs confirmation for its `drop policy` statements, which was not given, so
+it rolled back whole — the project is consistent at 0012, with none of 0013's
+policies or indexes present. Run it with:
+
+```bash
+DATABASE_URL='postgresql://...' npm run db:push
+```
+
+Nothing depends on it: it is a performance and clarity change, and the 17
+checks in `05_verify_policy_split.sql` confirm it leaves effective access
+unchanged (members read and write, viewers read only, non-members see
+nothing).
 
 One cosmetic mismatch if you compare the repository with the dashboard: the
 project's migration history lists `0012_tighten_anon_grants` and

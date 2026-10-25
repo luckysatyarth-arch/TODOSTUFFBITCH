@@ -24,6 +24,7 @@ it was meant to do.
 | `02_verify_invariants.sql` | The rules the brief states as absolute: completion cannot be forged, approval is required and happens at most once, one report per scope per date, and personal data stays private from teammates and admins |
 | `03_verify_recurrence.sql` | Recurrence: the rule shape the column accepts, the date arithmetic (including the anchoring that stops a monthly 31st drifting to the 28th), and that a series advances only on an explicit completion |
 | `04_verify_jobs.sql` | The job queue: idempotent enqueue, atomic claiming, backoff, dead-lettering, stale-lock reclaim, and that every queue function is refused to `anon` and `authenticated` |
+| `05_verify_policy_split.sql` | That splitting the `for all` write policies (0013) left effective access unchanged: a member reads and writes, a viewer reads only, a non-member sees nothing |
 
 Each check file runs inside a transaction that rolls back, so the cluster is
 left as the migrations made it.
