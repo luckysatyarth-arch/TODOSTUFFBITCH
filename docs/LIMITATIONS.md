@@ -87,24 +87,22 @@ not hold a request open — but a slow transcription does.
 and move transcription and embedding onto it. The handlers are already separate
 functions that take a client, so they can be called from a worker unchanged.
 
-### Internal search retrieval has not been run against a populated index
+### Integration tests still need a hosted project, but the schema does not
 
-Tasks, projects and notes are written into `indexed_documents` inline on every
-create, update and delete, and swept again by the 6-hourly cron. The query side
-— `search_documents_fts` returning those rows, and an `owner_only` document
-staying out of another member's results — was verified by reading the policies
-and the function definitions, but not by executing a search against a populated
-index: database access was withdrawn from this environment before that check
-could be run.
+`npm run db:verify` applies the migrations to a throwaway local PostgreSQL
+cluster and runs the authorization checks against it, as the `authenticated`
+role with RLS enforced. That covers internal search retrieval, the
+`owner_only` boundary, forged completion, approval idempotency, report
+uniqueness and the deny-all credential tables — 45 assertions, no network and
+no service-role key. See `supabase/local/README.md`.
 
-The authorization properties it would confirm *are* covered elsewhere: the
-integration tests assert that one member cannot read another's personal
-records, and the search function is `SECURITY INVOKER`, so it is the same RLS
-predicate doing the work in both cases. Treat the retrieval path itself as
-unverified until a search has been run against real indexed rows.
+What it does not cover is the application code path: the Vitest integration
+tests exercise the server actions through a real Supabase client, and those
+still need a hosted project and `SUPABASE_SERVICE_ROLE_KEY`. They skip
+themselves when it is absent rather than passing vacuously.
 
-**Next step:** create a task in each of two workspaces, run the search as each
-member, and confirm both the hits and the absence of the other member's rows.
+The local harness also cannot say anything about the provider adapters, which
+need real OAuth clients and live accounts.
 
 ### Recurring tasks are modelled but not expanded
 
@@ -166,23 +164,22 @@ counts into SQL views alongside `project_progress`.
 
 They create and delete confirmed users, which only the service role can do.
 They skip with a clear message when the key is absent, so `npm test` stays
-green — but a CI pipeline that does not supply it is not exercising the
-authorization boundary.
+green — but a CI pipeline that supplies neither the key nor `npm run db:verify`
+is not exercising the authorization boundary. `db:verify` needs no credentials
+and covers the policies themselves, so it is the one to put in CI first.
 
 ## Recommended order of work from here
 
 1. **Register the WhatsApp template** and verify the group limits against
    Meta's documentation. These are the only things standing between the
    reporting pipeline and live production delivery.
-2. **Run the internal search path once against a populated index**, which is
-   the one acceptance criterion that was implemented but never executed.
-3. **Add the general job worker.** Connector sync and re-indexing are now on a
+2. **Add the general job worker.** Connector sync and re-indexing are now on a
    cron; the worker is what remains for background transcription and
    embedding.
-4. **Deepen connector indexing** behind a setting, starting with Drive
+3. **Deepen connector indexing** behind a setting, starting with Drive
    document export, which is the most valuable and the best documented.
-5. **Expand recurring tasks**, which is self-contained and well covered by the
+4. **Expand recurring tasks**, which is self-contained and well covered by the
    existing trigger tests.
-6. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
+5. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
    of thousand tasks.
-7. **Add week and agenda calendar layouts**, which need no new data.
+6. **Add week and agenda calendar layouts**, which need no new data.

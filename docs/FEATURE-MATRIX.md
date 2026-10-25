@@ -89,11 +89,11 @@ Status key:
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Internal full-text search | Implemented, retrieval unverified | Generated `tsvector` column with a GIN index. Tasks, projects and notes are written to the index inline on every create, update and delete, and re-swept by cron. The query path has not been run against a populated index; see `LIMITATIONS.md` |
+| Internal full-text search | Tested | Generated `tsvector` column with a GIN index. Tasks, projects and notes are written to the index inline on every create, update and delete, and re-swept by cron. `npm run db:verify` runs the query against a populated index and asserts the rows come back ranked |
 | Semantic search | Needs credentials | pgvector with an HNSW index; needs an embeddings key |
-| Permissions applied before retrieval | Implemented | `SECURITY INVOKER` functions, so RLS filters inside the query |
-| Owner-only documents excluded from others' results | Implemented | `access_scope` plus an RLS predicate. A row marked `owner_only` without an owner is rejected by a table CHECK, so the privacy flag cannot be set without someone to own it |
-| Internal records reach the index | Implemented, unverified | Inline hooks on the task, project and note write paths, plus a 6-hourly sweep. Index writes are deliberately non-fatal: a failure logs and leaves the user's write committed |
+| Permissions applied before retrieval | Tested | `SECURITY INVOKER` functions, so RLS filters inside the query. Verified as the `authenticated` role, with a negative control showing the same query returns more rows when RLS is bypassed |
+| Owner-only documents excluded from others' results | Tested | `access_scope` plus an RLS predicate. One member's mail, synced into a shared workspace, is absent from a teammate's results and present in the owner's. A row marked `owner_only` without an owner is rejected by a table CHECK |
+| Internal records reach the index | Implemented | Inline hooks on the task, project and note write paths, plus a 6-hourly sweep. Index writes are deliberately non-fatal: a failure logs and leaves the user's write committed. The shaping step is unit-tested; the hooks firing on a real write is not separately covered |
 | Grounded answers with citations | Needs credentials | Must cite `[n]` records; inferences shown separately from stated fact |
 | Insufficient evidence as a real answer | Implemented | A first-class outcome, not a guess |
 | Rate limiting | Implemented | Per user, per hour, table-backed |

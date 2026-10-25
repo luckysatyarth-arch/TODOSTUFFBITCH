@@ -112,6 +112,7 @@ npm run dev
 | `npm run verify` | typecheck + lint + unit tests |
 | `npm test` | Unit tests (integration tests skip without credentials) |
 | `npm run test:e2e` | Playwright end-to-end tests |
+| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the authorization checks (no hosted project needed) |
 | `npm run db:seed` | Seed demo data |
 
 To run the integration tests, which need the service role key:
