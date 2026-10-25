@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,6 @@ export function Sidebar({
   pendingProposals: number;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Carry the active workspace through every nav link.

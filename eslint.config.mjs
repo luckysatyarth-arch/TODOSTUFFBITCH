@@ -1,16 +1,30 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
+import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
+import nextTypescript from 'eslint-config-next/typescript';
 
-const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) });
-
-export default [
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+/**
+ * eslint-config-next 16 ships native flat-config arrays, so they are spread
+ * directly. Routing them through @eslint/eslintrc's FlatCompat instead throws
+ * on a circular reference in the plugin graph under ESLint 9.39.
+ */
+const config = [
+  ...nextCoreWebVitals,
+  ...nextTypescript,
   {
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
-  { ignores: ['.next/**', 'node_modules/**', 'coverage/**', 'playwright-report/**', 'test-results/**'] },
+  {
+    ignores: [
+      '.next/**', 'node_modules/**', 'coverage/**',
+      'playwright-report/**', 'test-results/**',
+      'src/lib/supabase/database.types.ts',
+    ],
+  },
 ];
+
+export default config;

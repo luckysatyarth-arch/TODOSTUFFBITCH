@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
-export const uuid = z.string().uuid();
+/**
+ * Matches what PostgreSQL's `uuid` type accepts, which is any valid hex
+ * layout. Zod's `uuid()` additionally enforces the RFC 9562 version and
+ * variant bits and so rejects ids the database stores happily -- imported
+ * data, seeded fixtures, ids minted by other tools. Validating more strictly
+ * than the column would refuse legitimate requests, so this is deliberately
+ * the looser `guid` check.
+ */
+export const uuid = z.guid();
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
 
 export const taskStatus = z.enum([

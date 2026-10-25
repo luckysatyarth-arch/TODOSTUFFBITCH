@@ -283,27 +283,28 @@ export async function getTeamDashboard(
   const weekEnd = addCalendarDays(today, 7);
   const horizon = addCalendarDays(today, 30);
 
-  function applyFilters<T extends { eq: Function; in: Function; gte: Function; lte: Function }>(q: T): T {
-    let out = q;
-    if (filters.projectId) out = out.eq('project_id', filters.projectId) as T;
-    if (filters.assigneeId) out = out.eq('assignee_id', filters.assigneeId) as T;
-    if (filters.status?.length) out = out.in('status', filters.status) as T;
-    if (filters.priority?.length) out = out.in('priority', filters.priority) as T;
-    if (filters.dueFrom) out = out.gte('due_date', filters.dueFrom) as T;
-    if (filters.dueTo) out = out.lte('due_date', filters.dueTo) as T;
-    return out;
+  // Built as a reassigned chain rather than through a generic helper, so the
+  // generated client keeps its row types all the way through.
+  function buildFilteredTaskQuery() {
+    let query = supabase
+      .from('tasks')
+      .select(TASK_SELECT + ', estimated_minutes')
+      .eq('workspace_id', workspace.id)
+      .not('status', 'eq', 'cancelled')
+      .limit(2000);
+
+    if (filters.projectId) query = query.eq('project_id', filters.projectId);
+    if (filters.assigneeId) query = query.eq('assignee_id', filters.assigneeId);
+    if (filters.status?.length) query = query.in('status', filters.status);
+    if (filters.priority?.length) query = query.in('priority', filters.priority);
+    if (filters.dueFrom) query = query.gte('due_date', filters.dueFrom);
+    if (filters.dueTo) query = query.lte('due_date', filters.dueTo);
+    return query;
   }
 
   const [allRes, membersRes, projectsRes, progressRes, milestonesRes, eventsRes, recentRes] =
     await Promise.all([
-      applyFilters(
-        supabase
-          .from('tasks')
-          .select(TASK_SELECT + ', estimated_minutes')
-          .eq('workspace_id', workspace.id)
-          .not('status', 'eq', 'cancelled')
-          .limit(2000),
-      ),
+      buildFilteredTaskQuery(),
       supabase
         .from('workspace_members')
         .select('user_id, role, profiles(full_name)')

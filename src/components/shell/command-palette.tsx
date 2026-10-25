@@ -62,8 +62,6 @@ export function CommandPalette({
     return commands.filter((c, i) => i === 0 || c.label.toLowerCase().includes(needle));
   }, [commands, query]);
 
-  useEffect(() => { setCursor(0); }, [query]);
-
   if (!open) return null;
 
   function run(index: number) {
@@ -88,7 +86,12 @@ export function CommandPalette({
           <Input
             autoFocus
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              // Reset the highlight here rather than in an effect, which would
+              // trigger a second render pass on every keystroke.
+              setCursor(0);
+            }}
             placeholder="Search or jump to…"
             className="border-0 bg-transparent px-0 focus:ring-0"
             onKeyDown={(e) => {
