@@ -153,12 +153,18 @@ create or replace function public.approve_proposed_task(
 )
 returns uuid
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare
   v_proposal public.proposed_tasks;
   v_task_id uuid;
 begin
+  if auth.uid() is null then
+    raise exception 'authentication required'
+      using errcode = 'insufficient_privilege';
+  end if;
+
   -- FOR UPDATE serialises two concurrent approvals of the same proposal; the
   -- second waits here and then takes the already-approved branch below.
   select * into v_proposal
@@ -167,8 +173,24 @@ begin
   for update;
 
   if not found then
-    raise exception 'proposal % not found or not visible', p_proposal_id
+    raise exception 'proposal % not found', p_proposal_id
       using errcode = 'no_data_found';
+  end if;
+
+  -- This function is SECURITY DEFINER because it must write to task_activity
+  -- and audit_logs, which carry no INSERT policy precisely so a client cannot
+  -- forge history. The two checks RLS would have made are therefore made here,
+  -- explicitly: only the person who captured the source may turn it into work,
+  -- and only with a writing role. auth.uid() still resolves to the caller
+  -- inside a definer function, so both helpers evaluate against the real user.
+  if not app.owns_capture(v_proposal.capture_id) then
+    raise exception 'that proposal does not belong to you'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  if not app.can_write_workspace(v_proposal.workspace_id) then
+    raise exception 'your role in this workspace is read-only'
+      using errcode = 'insufficient_privilege';
   end if;
 
   -- Idempotent: a retried request returns the task the first call created
