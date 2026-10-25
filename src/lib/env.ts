@@ -23,7 +23,7 @@ const serverSchema = z.object({
 
   AI_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
   ANTHROPIC_API_KEY: z.string().min(10).optional(),
-  ANTHROPIC_MODEL: z.string().default('claude-sonnet-5-5'),
+  ANTHROPIC_MODEL: z.string().default('claude-opus-5-5'),
   OPENAI_API_KEY: z.string().min(10).optional(),
   OPENAI_MODEL: z.string().default('gpt-4.1'),
 

@@ -1,0 +1,104 @@
+@import 'tailwindcss';
+
+/*
+ * Notion-inspired surface: near-white paper, hairline borders, one restrained
+ * accent. Light is the default; dark is opt-in via the `dark` class, which the
+ * theme toggle sets and persists.
+ */
+@theme {
+  --color-paper: #ffffff;
+  --color-canvas: #fbfbfa;
+  --color-sunken: #f6f6f5;
+  --color-hairline: #e9e9e7;
+  --color-hairline-strong: #dcdcd8;
+
+  --color-ink: #1f1f1e;
+  --color-ink-soft: #5f5e5b;
+  --color-ink-faint: #8f8e8a;
+
+  --color-accent: #2f6feb;
+  --color-accent-soft: #eaf1fe;
+
+  --color-urgent: #c0392b;
+  --color-urgent-soft: #fdecea;
+  --color-high: #c76a15;
+  --color-high-soft: #fdf1e3;
+  --color-medium: #2f6feb;
+  --color-medium-soft: #eaf1fe;
+  --color-low: #6b7280;
+  --color-low-soft: #f3f4f6;
+
+  --color-done: #1f7a4d;
+  --color-done-soft: #e8f5ee;
+  --color-blocked: #a0341f;
+  --color-blocked-soft: #fdeceb;
+
+  --radius-card: 8px;
+  --font-sans: ui-sans-serif, -apple-system, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', sans-serif;
+}
+
+.dark {
+  --color-paper: #1c1c1b;
+  --color-canvas: #191918;
+  --color-sunken: #232322;
+  --color-hairline: #302f2e;
+  --color-hairline-strong: #3d3c3a;
+
+  --color-ink: #ededeb;
+  --color-ink-soft: #a5a4a0;
+  --color-ink-faint: #76756f;
+
+  --color-accent: #6b9cf7;
+  --color-accent-soft: #1e2a40;
+
+  --color-urgent: #f08a7d;
+  --color-urgent-soft: #3a1f1c;
+  --color-high: #e0a86a;
+  --color-high-soft: #37291a;
+  --color-medium: #6b9cf7;
+  --color-medium-soft: #1e2a40;
+  --color-low: #9ca3af;
+  --color-low-soft: #2a2a29;
+
+  --color-done: #5cc78e;
+  --color-done-soft: #1a2e22;
+  --color-blocked: #f0917f;
+  --color-blocked-soft: #3a211d;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus for keyboard users on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+/* Restrained scrollbars so dense lists do not look busy. */
+@media (hover: hover) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-hairline-strong) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
