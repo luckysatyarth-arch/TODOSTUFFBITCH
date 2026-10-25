@@ -6,6 +6,10 @@
       "schedule": "30 15 * * *"
     },
     {
+      "path": "/api/cron/run-jobs",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/retry-deliveries",
       "schedule": "0 * * * *"
     },

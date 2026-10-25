@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase/server';
 import { syncIntegration } from '@/server/services/integrations';
 import { indexWorkspaceRecords } from '@/server/services/indexer';
 import { pruneRateLimits } from '@/server/services/rate-limit';
+import { enqueueJob } from '@/server/services/jobs';
 import { serverEnv } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,10 @@ export async function GET(request: NextRequest) {
   const started = Date.now();
   const onlyWorkspace = request.nextUrl.searchParams.get('workspace');
   const skipConnectors = request.nextUrl.searchParams.get('internalOnly') === 'true';
+  // `?queue=true` enqueues the work instead of doing it inline, so one slow
+  // provider cannot consume the request budget and starve the integrations
+  // after it. The worker then runs them with per-job attempts and backoff.
+  const queue = request.nextUrl.searchParams.get('queue') === 'true';
 
   const outcome = {
     integrations: 0,
@@ -50,6 +55,7 @@ export async function GET(request: NextRequest) {
     internalDocumentsIndexed: 0,
     embeddingsWritten: 0,
     errors: [] as Array<{ integrationId: string; provider: string; error: string }>,
+    queued: 0,
     durationMs: 0,
   };
 
@@ -71,6 +77,23 @@ export async function GET(request: NextRequest) {
     outcome.integrations = (integrations ?? []).length;
 
     for (const integration of integrations ?? []) {
+      if (queue) {
+        // One job per integration per run. The key keeps a retried cron from
+        // stacking duplicates for the same integration and hour.
+        const key = `sync:${integration.id}:${new Date().toISOString().slice(0, 13)}`;
+        await enqueueJob(client, 'sync_integration', { integrationId: integration.id }, {
+          idempotencyKey: key,
+        }).then(() => { outcome.queued += 1; })
+          .catch((err: unknown) => {
+            outcome.errors.push({
+              integrationId: integration.id,
+              provider: integration.provider,
+              error: err instanceof Error ? err.message : 'Could not enqueue.',
+            });
+          });
+        continue;
+      }
+
       // Sequential on purpose: these hit third-party rate limits, and a burst
       // of parallel syncs is the quickest way to get throttled.
       const result = await syncIntegration(client, integration.id, { limit: 50 })

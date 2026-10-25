@@ -270,6 +270,7 @@ REPORT_TIMEZONE=Asia/Kolkata
 | Schedule | Route | Does |
 | --- | --- | --- |
 | `30 15 * * *` UTC | `/api/cron/daily-reports` | 21:00 Asia/Kolkata. Generates and delivers the daily reports |
+| `*/10 * * * *` | `/api/cron/run-jobs` | Claims and runs due jobs from `job_runs` |
 | `0 * * * *` | `/api/cron/retry-deliveries` | Retries deliveries that failed with a retryable error |
 | `15 */6 * * *` | `/api/cron/sync-connectors` | Syncs every connected integration, then re-sweeps internal records into the search index |
 

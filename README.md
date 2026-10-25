@@ -127,7 +127,7 @@ npm run dev
 | `npm test` | Unit tests (integration tests skip without credentials) |
 | `npm run test:e2e` | Playwright end-to-end tests |
 | `npm run db:push` | Apply pending migrations to `DATABASE_URL` |
-| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the 88 authorization and behaviour checks (no hosted project needed) |
+| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the 115 authorization and behaviour checks (no hosted project needed) |
 | `npm run db:seed` | Seed demo data |
 
 To run the integration tests, which need the service role key:
@@ -150,7 +150,7 @@ src/
   app/
     (auth)/            login, signup, server actions
     (app)/             the authenticated shell and every screen
-    api/cron/          daily reports, delivery retries, connector sync
+    api/cron/          daily reports, job worker, delivery retries, connector sync
     api/integrations/  OAuth start and callback, one pair per provider family
     api/webhooks/      inbound WhatsApp (signature-verified)
   components/          UI primitives and feature components
@@ -165,7 +165,7 @@ src/
     connectors/        connector interface and per-provider adapters
     services/          dashboards, tasks, calendar, capture, search,
                        reports, delivery, indexing, rate limiting
-supabase/migrations/   ten ordered SQL migrations
+supabase/migrations/   eleven ordered SQL migrations
 supabase/local/        local verification harness (not deployed)
 docs/                  setup, feature matrix, limitations, research
 tests/                 unit, integration and e2e
@@ -210,6 +210,7 @@ so it cannot drift across the date line. Timed events are stored as
    URL — report links are built from it.
 3. Deploy. `vercel.json` registers the cron jobs automatically:
    - `30 15 * * *` → `/api/cron/daily-reports` (21:00 IST)
+   - `*/10 * * * *` → `/api/cron/run-jobs` (the job worker)
    - `0 * * * *` → `/api/cron/retry-deliveries`
    - `15 */6 * * *` → `/api/cron/sync-connectors`
 4. **Verify the schedule after deploying**, which the brief asks for

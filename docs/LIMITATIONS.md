@@ -4,24 +4,27 @@ Written to be useful rather than reassuring. Everything here is either a real
 constraint of an external platform, or a deliberate scope decision — not a
 list of things that quietly do not work.
 
-## Read this first: migration 0010 has not been applied to the hosted project
+## Read this first: migrations 0010 and 0011 are not applied to the hosted project
 
 Migrations 0001–0009 were applied to the Supabase project this was developed
-against. **0010 (recurrence) has not been**, because access to that project was
-withdrawn from the environment the work was done in before it could be run.
+against. **0010 (recurrence) and 0011 (the job queue) have not been**, because
+access to that project was withdrawn from the environment the work was done in
+before they could be run.
 
-It is verified — it applies cleanly to a stock PostgreSQL 16 and passes 43 SQL
+Both are verified — they apply cleanly to a stock PostgreSQL 16 and pass 70 SQL
 checks under `npm run db:verify` — but on the hosted database the recurrence
-column still has no CHECK, no `recurrence_spawned_task_id` and no trigger, so
-completing a recurring task there does nothing. Apply it before relying on
-recurrence:
+column still has no CHECK, no `recurrence_spawned_task_id` and no trigger, and
+the queue functions do not exist, so completing a recurring task there does
+nothing and the worker route returns an error. Apply them before relying on
+either:
 
 ```bash
 DATABASE_URL='postgresql://...' npm run db:push
 ```
 
-`src/lib/supabase/database.types.ts` carries one hand-added column for the same
-reason; regenerating the types after applying 0010 produces the same file.
+`src/lib/supabase/database.types.ts` carries a hand-added column and five
+hand-added function signatures for the same reason; regenerating the types
+after applying both produces the same file.
 
 ## Hard limitations, imposed by external platforms
 
@@ -93,18 +96,31 @@ inside one.
 setting, and chunk the result through the existing `indexDocuments` path,
 which already handles chunking and embedding.
 
-### No general worker drives the job queue
+### The queue runs three job types, and transcription is not one of them
 
-`job_runs` exists with claim, retry and lock semantics, and three crons use the
-same durable-record pattern: report generation, delivery retries, and connector
-sync plus re-indexing. What is still missing is a *general* worker that polls
-the queue, so transcription and extraction run inline in the request that
-triggers them. Audio is uploaded directly to storage, so a long recording does
-not hold a request open — but a slow transcription does.
+`/api/cron/run-jobs` claims from `job_runs` every ten minutes and runs
+connector syncs, workspace re-indexing and delivery retries. Claiming is
+atomic (`for update skip locked`), attempts are counted, backoff is capped
+exponential and a job that exhausts its attempts becomes `dead` rather than
+looping.
 
-**Next step:** add `/api/cron/run-jobs`, claim with `FOR UPDATE SKIP LOCKED`,
-and move transcription and embedding onto it. The handlers are already separate
-functions that take a client, so they can be called from a worker unchanged.
+What is not on it yet is transcription and embedding generation, which still
+run inline in the request that triggers them. Audio uploads straight to
+storage, so a long recording does not hold a request open — but a slow
+transcription does. Both need provider credentials before the move is worth
+making, since neither does anything without them.
+
+**Next step:** add `transcribe_capture` and `embed_documents` handlers to
+`src/server/services/jobs.ts` and enqueue from the capture path instead of
+awaiting. The handlers are already separate functions that take a client, so
+they move unchanged.
+
+One operational note: the worker returns 200 even when individual jobs failed.
+The request did its work, and each failure is recorded on its own row with its
+attempt count. Failing the response would make the scheduler retry the whole
+batch and double-count attempts against the jobs that succeeded. Watch the
+`dead` count in the response, not the status code — that is the number that
+have given up and need a person.
 
 ### Integration tests still need a hosted project, but the schema does not
 
@@ -215,9 +231,8 @@ counts into SQL views alongside `project_progress`.
 1. **Register the WhatsApp template** and verify the group limits against
    Meta's documentation. These are the only things standing between the
    reporting pipeline and live production delivery.
-2. **Add the general job worker.** Connector sync and re-indexing are now on a
-   cron; the worker is what remains for background transcription and
-   embedding.
+2. **Move transcription and embedding onto the queue**, which the worker now
+   exists to run; they need provider credentials first.
 3. **Deepen connector indexing** behind a setting, starting with Drive
    document export, which is the most valuable and the best documented.
 4. **Add `setpos` to the recurrence rule** for "last working day of the

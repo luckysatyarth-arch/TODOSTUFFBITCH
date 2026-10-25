@@ -2,10 +2,13 @@
 //   npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/supabase/database.types.ts
 // Do not hand-edit.
 //
-// Exception, to be removed by the next regeneration: tasks.recurrence_spawned_task_id
-// was added by hand when migration 0010 landed, because the schema it was
-// generated from was not reachable at the time. The column is in that
-// migration, so regenerating produces the same thing.
+// Exception, to be removed by the next regeneration: the following were added
+// by hand when migrations 0010 and 0011 landed, because the schema they were
+// generated from was not reachable at the time. All of it is in those
+// migrations, so regenerating produces the same thing:
+//   - tasks.recurrence_spawned_task_id
+//   - the claim_jobs / complete_job / enqueue_job / fail_job /
+//     reclaim_stale_jobs function signatures
 
 export type Json =
   | string
@@ -1743,6 +1746,54 @@ export type Database = {
         }
         Returns: string
       }
+      claim_jobs: {
+        Args: {
+          p_limit?: number
+          p_types?: string[]
+          p_worker: string
+        }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload: Json
+          result: Json | null
+          run_after: string
+          status: Database["public"]["Enums"]["job_status"]
+          updated_at: string
+        }[]
+      }
+      complete_job: {
+        Args: {
+          p_id: string
+          p_result?: Json
+        }
+        Returns: undefined
+      }
+      enqueue_job: {
+        Args: {
+          p_idempotency_key?: string | null
+          p_job_type: string
+          p_max_attempts?: number
+          p_payload?: Json
+          p_run_after?: string | null
+        }
+        Returns: string
+      }
+      fail_job: {
+        Args: {
+          p_error: string
+          p_id: string
+          p_retryable?: boolean
+        }
+        Returns: Database["public"]["Enums"]["job_status"]
+      }
       match_document_chunks: {
         Args: {
           p_embedding: string
@@ -1763,6 +1814,12 @@ export type Database = {
           title: string
           url: string
         }[]
+      }
+      reclaim_stale_jobs: {
+        Args: {
+          p_older_than?: unknown
+        }
+        Returns: number
       }
       search_documents_fts: {
         Args: {

@@ -107,7 +107,8 @@ Status key:
 | OAuth connect flow | Implemented | `/api/integrations/{family}/start` and `/callback`, one callback per provider family. State is HMAC-signed with a 15-minute TTL, and the callback refuses a state whose user id is not the signed-in user, so a connection cannot be attached to someone else's workspace |
 | Credential encryption at rest | Tested | AES-256-GCM in a separate `integration_credentials` table with RLS on and no policies, so it is unreachable except through the service role. Unit tests cover the round trip and tamper detection |
 | Token refresh | Implemented | Refreshed two minutes ahead of expiry; a credential that will not decrypt sets the integration to `error` and asks for a reconnect rather than retrying forever |
-| Scheduled sync | Implemented | `15 */6 * * *`, sequentially per integration to stay inside third-party rate limits. Every attempt writes a sync-run row, and an unsupported provider is recorded as unsupported rather than failed |
+| Scheduled sync | Implemented | `15 */6 * * *`, sequentially per integration to stay inside third-party rate limits. Every attempt writes a sync-run row, and an unsupported provider is recorded as unsupported rather than failed. `?queue=true` hands each integration to the job queue instead, so one slow provider cannot starve the rest |
+| Durable job queue and worker | Tested | `/api/cron/run-jobs` every 10 minutes. Atomic claiming (`for update skip locked`), counted attempts, capped exponential backoff, dead-lettering, idempotent enqueue, and stale-lock reclaim for a worker that died mid-job. Service-role only: the table has RLS with no policies and every queue function is revoked from `anon` and `authenticated`. 27 SQL checks plus 9 unit tests |
 | Google Drive | Needs credentials | Metadata-level indexing; document bodies not exported |
 | Gmail | Needs credentials | Read-only scope, headers and snippet only |
 | Outlook mail (Graph) | Needs credentials | Read-only |
