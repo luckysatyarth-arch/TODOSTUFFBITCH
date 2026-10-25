@@ -25,6 +25,14 @@ non-retryable failure goes straight to `dead`.
 `src/lib/supabase/database.types.ts` is regenerated from that schema, so it no
 longer carries any hand-added declarations.
 
+One cosmetic mismatch if you compare the repository with the dashboard: the
+project's migration history lists `0012_tighten_anon_grants` and
+`0012_tighten_anon_grants_fix`, because the first attempt revoked EXECUTE from
+`anon` and was a no-op (the grant was to PUBLIC). The repository has a single
+`0012_tighten_anon_grants.sql` with the corrected statements, so a fresh
+project gets the same end state in one step. The deployed grants are the
+corrected ones.
+
 A demo user is seeded for the e2e suite: `alice@demo.test` /
 `demo-password-1`, with a team workspace, a project, six tasks (one
 recurring), a milestone, a note and two calendar events.
