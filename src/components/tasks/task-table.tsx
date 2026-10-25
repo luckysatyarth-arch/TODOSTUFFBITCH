@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/input';
 import { ErrorNotice } from '@/components/ui/feedback';
 import { PRIORITY_LABELS, STATUS_LABELS, STATUS_ORDER } from '@/components/ui/labels';
 import { formatDateIn } from '@/lib/dates';
+import { describeRecurrence, recurrenceBadge } from '@/lib/validation/recurrence';
 import { bulkUpdateTasks, updateTask } from '@/app/(app)/actions';
 import { cn } from '@/lib/utils';
 import type { TaskListItem } from '@/server/services/tasks';
@@ -159,6 +160,14 @@ export function TaskTable({
                     >
                       {task.title}
                     </Link>
+                    {task.recurrence ? (
+                      <span
+                        className="ml-1.5 text-[11px] text-ink-faint"
+                        title={describeRecurrence(task.recurrence) ?? undefined}
+                      >
+                        ↻ {recurrenceBadge(task.recurrence)}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-2 py-1.5">
                     {canWrite ? (

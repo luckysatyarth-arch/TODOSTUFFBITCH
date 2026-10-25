@@ -22,8 +22,9 @@ it was meant to do.
 | `00_bootstrap.sql` | The Supabase-managed objects the migrations depend on — the three roles, `auth.users`, `auth.uid()`, and the `storage` schema — recreated locally. Not part of the deployed schema |
 | `01_verify_search.sql` | Internal search: that it returns indexed rows at all, and that the `owner_only` flag and workspace membership are both enforced inside the query |
 | `02_verify_invariants.sql` | The rules the brief states as absolute: completion cannot be forged, approval is required and happens at most once, one report per scope per date, and personal data stays private from teammates and admins |
+| `03_verify_recurrence.sql` | Recurrence: the rule shape the column accepts, the date arithmetic (including the anchoring that stops a monthly 31st drifting to the 28th), and that a series advances only on an explicit completion |
 
-Both check files run inside a transaction that rolls back, so the cluster is
+Each check file runs inside a transaction that rolls back, so the cluster is
 left as the migrations made it.
 
 ## How the checks are written

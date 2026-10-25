@@ -4,6 +4,25 @@ Written to be useful rather than reassuring. Everything here is either a real
 constraint of an external platform, or a deliberate scope decision — not a
 list of things that quietly do not work.
 
+## Read this first: migration 0010 has not been applied to the hosted project
+
+Migrations 0001–0009 were applied to the Supabase project this was developed
+against. **0010 (recurrence) has not been**, because access to that project was
+withdrawn from the environment the work was done in before it could be run.
+
+It is verified — it applies cleanly to a stock PostgreSQL 16 and passes 43 SQL
+checks under `npm run db:verify` — but on the hosted database the recurrence
+column still has no CHECK, no `recurrence_spawned_task_id` and no trigger, so
+completing a recurring task there does nothing. Apply it before relying on
+recurrence:
+
+```bash
+DATABASE_URL='postgresql://...' npm run db:push
+```
+
+`src/lib/supabase/database.types.ts` carries one hand-added column for the same
+reason; regenerating the types after applying 0010 produces the same file.
+
 ## Hard limitations, imposed by external platforms
 
 ### Personal WhatsApp inbox access is impossible
@@ -104,13 +123,28 @@ themselves when it is absent rather than passing vacuously.
 The local harness also cannot say anything about the provider adapters, which
 need real OAuth clients and live accounts.
 
-### Recurring tasks are modelled but not expanded
+### Recurrence covers four frequencies, not all of RFC 5545
 
-`tasks.recurrence` is a JSONB column and nothing reads it. A recurring task
-does not yet generate its next instance on completion.
+Daily, weekly (optionally on named weekdays), monthly and yearly, each with an
+interval, and an end date or a count. That covers the ordinary cases. It is not
+a full RRULE implementation: there is no "last Friday of the month", no
+"third Tuesday", no multiple rules on one task and no per-occurrence
+exceptions.
 
-**Next step:** expand on completion in the status trigger, or in a nightly
-job; the latter is easier to reason about and to test.
+A series also advances one step at a time, when an occurrence is explicitly
+completed, rather than being expanded into a year of rows upfront. That keeps
+it inside the rule that completion is never inferred, and it means a future
+occurrence does not exist to be rescheduled in advance. Editing the rule
+re-anchors the series on the current task's due date.
+
+One interaction worth knowing: a weekly rule with named weekdays and an
+interval above one steps whole weeks from the week the series started, so
+"every second Tuesday and Thursday" skips a full week rather than alternating
+between the two days.
+
+**Next step:** if "last working day of the month" is needed -- a common one
+for reporting tasks -- add a `setpos` field to the rule rather than widening
+`freq`.
 
 ### Calendar has month and day views only
 

@@ -54,7 +54,21 @@ Settings page shows exactly what this deployment can and cannot do.
 
 ### 4. Apply the migrations
 
-Either with the Supabase CLI:
+With the bundled runner, which tracks what it has applied in
+`app.schema_migrations` and so is safe to re-run:
+
+```bash
+# Project Settings -> Database -> Connection string. Do not commit it.
+DATABASE_URL='postgresql://...' npm run db:push
+DATABASE_URL='postgresql://...' npm run db:push -- --dry-run   # just list
+```
+
+Each file runs in its own transaction, so a failure rolls back whole and
+leaves the database on the last good migration. If a migration that was
+already applied has since been edited, the runner says so and refuses to
+re-run it rather than guessing.
+
+Or with the Supabase CLI:
 
 ```bash
 npx supabase link --project-ref <ref>
@@ -112,7 +126,8 @@ npm run dev
 | `npm run verify` | typecheck + lint + unit tests |
 | `npm test` | Unit tests (integration tests skip without credentials) |
 | `npm run test:e2e` | Playwright end-to-end tests |
-| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the authorization checks (no hosted project needed) |
+| `npm run db:push` | Apply pending migrations to `DATABASE_URL` |
+| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the 88 authorization and behaviour checks (no hosted project needed) |
 | `npm run db:seed` | Seed demo data |
 
 To run the integration tests, which need the service role key:
@@ -150,7 +165,8 @@ src/
     connectors/        connector interface and per-provider adapters
     services/          dashboards, tasks, calendar, capture, search,
                        reports, delivery, indexing, rate limiting
-supabase/migrations/   nine ordered SQL migrations
+supabase/migrations/   ten ordered SQL migrations
+supabase/local/        local verification harness (not deployed)
 docs/                  setup, feature matrix, limitations, research
 tests/                 unit, integration and e2e
 ```

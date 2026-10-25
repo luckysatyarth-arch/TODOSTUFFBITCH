@@ -1,0 +1,150 @@
+import { z } from 'zod';
+import { isoDate } from './common';
+
+/**
+ * Recurrence rules.
+ *
+ * This mirrors `app.is_valid_recurrence` in migration 0010. The database is
+ * the authority -- it has a CHECK constraint, so an invalid rule cannot be
+ * stored whatever the caller does -- and this exists so a bad rule is refused
+ * with a readable message before it gets that far.
+ *
+ * `.strict()` matters: a misspelled `weekday` would otherwise be dropped
+ * silently and leave a weekly rule meaning "every week on the start day"
+ * instead of the days the user picked.
+ */
+
+export const RECURRENCE_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const;
+export const recurrenceFrequency = z.enum(RECURRENCE_FREQUENCIES);
+
+/** ISO weekday numbers, 1 = Monday .. 7 = Sunday, as `extract(isodow)` uses. */
+export const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+export const recurrenceRule = z
+  .object({
+    freq: recurrenceFrequency,
+    /** Every N periods. Capped to match the database constraint. */
+    interval: z.coerce.number().int().min(1).max(366).optional(),
+    /** Weekly only: which days the task falls on. */
+    weekdays: z.array(z.coerce.number().int().min(1).max(7)).min(1).max(7).optional(),
+    /** The series' first due date. Set by the server, not the client. */
+    anchor: isoDate.optional(),
+    /** How many occurrences have been created. Maintained by the database. */
+    occurrence: z.coerce.number().int().min(0).optional(),
+    /** Last date the series may produce. */
+    until: isoDate.optional(),
+    /** How many FURTHER occurrences to create after the current one. */
+    remaining: z.coerce.number().int().min(0).optional(),
+  })
+  .strict()
+  .refine((r) => r.freq === 'weekly' || r.weekdays === undefined, {
+    message: 'weekdays only apply to a weekly rule',
+    path: ['weekdays'],
+  })
+  .refine((r) => !r.weekdays || new Set(r.weekdays).size === r.weekdays.length, {
+    message: 'weekdays must not repeat',
+    path: ['weekdays'],
+  })
+  .refine((r) => !r.until || !r.anchor || r.until >= r.anchor, {
+    message: 'the end date must not be before the series starts',
+    path: ['until'],
+  });
+
+export type RecurrenceRule = z.infer<typeof recurrenceRule>;
+
+/**
+ * What the user may send. The fields the database maintains are stripped
+ * rather than rejected, so a form that round-trips an existing rule cannot
+ * rewrite the series' anchor and shift every future date.
+ */
+export const recurrenceInput = recurrenceRule
+  .transform(({ anchor: _anchor, occurrence: _occurrence, ...rest }) => rest)
+  .nullish();
+
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const ORDINALS: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd', 21: 'st', 22: 'nd', 23: 'rd', 31: 'st' };
+const ordinal = (n: number) => `${n}${ORDINALS[n] ?? 'th'}`;
+
+function listWeekdays(days: number[], short = false): string {
+  const names = short ? WEEKDAY_SHORT : WEEKDAY_NAMES;
+  const sorted = [...days].sort((a, b) => a - b);
+
+  if (sorted.length === 7) return 'every day';
+  if (sorted.length === 5 && sorted.every((d) => d <= 5)) return 'weekdays';
+  if (sorted.length === 2 && sorted[0] === 6 && sorted[1] === 7) return 'weekends';
+
+
+  // The schema pins each day to 1..7, but the index signature does not know
+  // that, so fall back to the number rather than printing "undefined".
+  const labels = sorted.map((d) => names[d - 1] ?? String(d));
+  const last = labels.at(-1);
+  if (labels.length === 1 || last === undefined) return labels.join(', ');
+  return `${labels.slice(0, -1).join(', ')} and ${last}`;
+}
+
+/**
+ * Describes a rule the way a person would say it, for the task form and the
+ * recurring badge. A rule the user cannot read is a rule they cannot check.
+ */
+export function describeRecurrence(rule: RecurrenceRule | null | undefined): string | null {
+  if (!rule) return null;
+
+  const every = rule.interval ?? 1;
+  let text: string;
+
+  if (rule.freq === 'weekly' && rule.weekdays?.length) {
+    const days = listWeekdays(rule.weekdays);
+    text = every === 1
+      ? `Weekly on ${days}`
+      : `Every ${ordinal(every)} week on ${days}`;
+  } else {
+    const unit = rule.freq === 'daily' ? 'day'
+      : rule.freq === 'weekly' ? 'week'
+      : rule.freq === 'monthly' ? 'month'
+      : 'year';
+    text = every === 1 ? `Every ${unit}` : `Every ${every} ${unit}s`;
+
+    // The anchor is what keeps a monthly series on its own date, so it is
+    // worth naming: "every month on the 31st" is a different promise from
+    // "every month".
+    if (rule.anchor && (rule.freq === 'monthly' || rule.freq === 'yearly')) {
+      const day = Number(rule.anchor.slice(8, 10));
+      if (Number.isFinite(day)) text += ` on the ${ordinal(day)}`;
+    }
+  }
+
+  if (rule.until) text += `, until ${rule.until}`;
+  else if (typeof rule.remaining === 'number') {
+    text += rule.remaining === 0
+      ? ', ending with this one'
+      : `, ${rule.remaining} more time${rule.remaining === 1 ? '' : 's'}`;
+  }
+
+  return text;
+}
+
+/** Short form for a dense list or a badge. */
+export function recurrenceBadge(rule: RecurrenceRule | null | undefined): string | null {
+  if (!rule) return null;
+  const every = rule.interval ?? 1;
+
+  if (rule.freq === 'weekly' && rule.weekdays?.length) {
+    const days = listWeekdays(rule.weekdays, true);
+    return every === 1 ? days : `${days} /${every}w`;
+  }
+  const unit = { daily: 'd', weekly: 'w', monthly: 'mo', yearly: 'y' }[rule.freq];
+  return every === 1 ? `Every ${unit}` : `Every ${every}${unit}`;
+}
+
+/**
+ * Parses a rule off a database row. The column is jsonb, so what comes back is
+ * unknown until it is checked; an unreadable rule is reported as absent rather
+ * than crashing a task list over one bad row.
+ */
+export function parseRecurrence(value: unknown): RecurrenceRule | null {
+  if (value == null) return null;
+  const parsed = recurrenceRule.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cleanText, isoDate, optionalText, priority, taskStatus, uuid } from './common';
+import { recurrenceInput } from './recurrence';
 
 export const createTaskInput = z.object({
   workspaceId: uuid,
@@ -14,6 +15,7 @@ export const createTaskInput = z.object({
   dueDate: isoDate.nullish(),
   estimatedMinutes: z.coerce.number().int().min(0).max(100_000).nullish(),
   tags: z.array(cleanText(40)).max(20).default([]),
+  recurrence: recurrenceInput,
   sourceCaptureId: uuid.nullish(),
 }).refine(
   (v) => !v.startDate || !v.dueDate || v.startDate <= v.dueDate,
@@ -33,6 +35,7 @@ export const updateTaskInput = z.object({
   estimatedMinutes: z.coerce.number().int().min(0).max(100_000).nullish(),
   actualMinutes: z.coerce.number().int().min(0).max(100_000).nullish(),
   tags: z.array(cleanText(40)).max(20).optional(),
+  recurrence: recurrenceInput,
   boardPosition: z.number().optional(),
 });
 

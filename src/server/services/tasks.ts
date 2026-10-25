@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { OPEN_STATUSES, PRIORITY_ORDER } from '@/lib/validation/common';
 import { todayIn } from '@/lib/dates';
 import type { TaskFilters } from '@/lib/validation/tasks';
+import { parseRecurrence, type RecurrenceRule } from '@/lib/validation/recurrence';
 import type { Database } from '@/lib/supabase/database.types';
 import type { WorkspaceSummary } from '@/server/auth';
 
@@ -27,12 +28,14 @@ export interface TaskListItem {
   sourceCaptureId: string | null;
   completedAt: string | null;
   updatedAt: string;
+  /** Parsed recurrence rule, or null when the task does not repeat. */
+  recurrence: RecurrenceRule | null;
 }
 
 const LIST_SELECT =
   'id, title, description, status, priority, due_date, start_date, project_id, ' +
   'assignee_id, tags, estimated_minutes, board_position, parent_task_id, ' +
-  'source_capture_id, completed_at, updated_at, ' +
+  'source_capture_id, completed_at, updated_at, recurrence, ' +
   'projects(name), profiles!tasks_assignee_id_fkey(full_name)';
 
 type Row = {
@@ -43,6 +46,7 @@ type Row = {
   tags: string[]; estimated_minutes: number | null; board_position: number;
   parent_task_id: string | null; source_capture_id: string | null;
   completed_at: string | null; updated_at: string;
+  recurrence: unknown;
   projects: { name: string } | null;
   profiles: { full_name: string | null } | null;
 };
@@ -67,6 +71,9 @@ function mapRow(row: Row): TaskListItem {
     sourceCaptureId: row.source_capture_id,
     completedAt: row.completed_at,
     updatedAt: row.updated_at,
+    // jsonb, so the shape is unverified until it is parsed. An unreadable rule
+    // reads as "does not repeat" rather than breaking the list.
+    recurrence: parseRecurrence(row.recurrence),
   };
 }
 

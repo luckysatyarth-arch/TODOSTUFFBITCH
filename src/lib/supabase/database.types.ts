@@ -1,6 +1,11 @@
 // Generated from the live Supabase schema. Regenerate with:
 //   npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/supabase/database.types.ts
 // Do not hand-edit.
+//
+// Exception, to be removed by the next regeneration: tasks.recurrence_spawned_task_id
+// was added by hand when migration 0010 landed, because the schema it was
+// generated from was not reachable at the time. The column is in that
+// migration, so regenerating produces the same thing.
 
 export type Json =
   | string
@@ -1399,6 +1404,7 @@ export type Database = {
           priority: Database["public"]["Enums"]["priority_level"]
           project_id: string | null
           recurrence: Json | null
+          recurrence_spawned_task_id: string | null
           source_capture_id: string | null
           start_date: string | null
           status: Database["public"]["Enums"]["task_status"]
@@ -1424,6 +1430,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["priority_level"]
           project_id?: string | null
           recurrence?: Json | null
+          recurrence_spawned_task_id?: string | null
           source_capture_id?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["task_status"]
@@ -1449,6 +1456,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["priority_level"]
           project_id?: string | null
           recurrence?: Json | null
+          recurrence_spawned_task_id?: string | null
           source_capture_id?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["task_status"]

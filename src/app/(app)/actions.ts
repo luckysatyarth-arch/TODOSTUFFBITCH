@@ -13,7 +13,7 @@ import {
   calendarEventInput, createProjectInput, milestoneInput, noteInput, updateProjectInput,
 } from '@/lib/validation/projects';
 import { uuid } from '@/lib/validation/common';
-import type { Database } from '@/lib/supabase/database.types';
+import type { Database, Json } from '@/lib/supabase/database.types';
 import {
   onNoteChanged, onProjectChanged, onRecordDeleted, onTaskChanged,
 } from '@/server/services/index-hooks';
@@ -89,6 +89,12 @@ export async function createTask(raw: unknown): Promise<ActionResult<{ id: strin
         due_date: input.dueDate ?? null,
         estimated_minutes: input.estimatedMinutes ?? null,
         tags: input.tags,
+        // Anchor the series on the first occurrence's due date. The database
+        // counts every later date from this, which is what stops a monthly
+        // rule drifting off its day of month after a short February.
+        recurrence: input.recurrence
+          ? ({ ...input.recurrence, anchor: input.dueDate ?? undefined } as unknown as Json)
+          : null,
         source_capture_id: input.sourceCaptureId ?? null,
         created_by: session.userId,
       })
@@ -133,6 +139,18 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     if (input.dueDate !== undefined) patch.due_date = input.dueDate;
     if (input.estimatedMinutes !== undefined) patch.estimated_minutes = input.estimatedMinutes;
     if (input.actualMinutes !== undefined) patch.actual_minutes = input.actualMinutes;
+    if (input.recurrence !== undefined) {
+      // Editing the rule re-anchors it on the due date this task now has, so
+      // the schedule the user just described is the one they get. The fields
+      // the database maintains were stripped by the schema, so a round-tripped
+      // rule cannot silently move the series.
+      patch.recurrence = input.recurrence
+        ? ({
+            ...input.recurrence,
+            anchor: input.dueDate ?? undefined,
+          } as unknown as Json)
+        : null;
+    }
     if (input.tags !== undefined) patch.tags = input.tags;
     if (input.boardPosition !== undefined) patch.board_position = input.boardPosition;
 

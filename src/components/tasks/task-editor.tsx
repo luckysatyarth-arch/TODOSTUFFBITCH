@@ -10,6 +10,10 @@ import { PRIORITY_LABELS, STATUS_LABELS, STATUS_ORDER } from '@/components/ui/la
 import { deleteTask, updateTask } from '@/app/(app)/actions';
 import type { TaskDetail } from '@/server/services/tasks';
 import type { Priority, TaskStatus } from './types';
+import {
+  draftToRecurrence, RecurrenceField, recurrenceToDraft, type RecurrenceDraft,
+} from './recurrence-field';
+import { describeRecurrence } from '@/lib/validation/recurrence';
 
 /**
  * Editable task fields.
@@ -47,6 +51,10 @@ export function TaskEditor({
     tags: task.tags.join(', '),
   });
 
+  const [recurrence, setRecurrence] = useState<RecurrenceDraft>(
+    () => recurrenceToDraft(task.recurrence),
+  );
+
   function save() {
     setError(null);
     setSaved(false);
@@ -64,6 +72,7 @@ export function TaskEditor({
         estimatedMinutes: form.estimatedMinutes ? Number(form.estimatedMinutes) : null,
         actualMinutes: form.actualMinutes ? Number(form.actualMinutes) : null,
         tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        recurrence: draftToRecurrence(recurrence),
       });
       if (!result.ok) setError(result.error ?? 'Could not save.');
       else setSaved(true);
@@ -87,6 +96,12 @@ export function TaskEditor({
           <p className="whitespace-pre-wrap text-sm text-ink-soft">
             {task.description ?? 'No description.'}
           </p>
+          {task.recurrence ? (
+            <p className="mt-3 text-xs text-ink-soft">
+              <span className="text-ink-faint">Repeats: </span>
+              {describeRecurrence(task.recurrence)}
+            </p>
+          ) : null}
           <p className="mt-3 text-[11px] text-ink-faint">
             Your role in this workspace is {`'`}viewer{`'`}, so this task is read-only.
           </p>
@@ -220,6 +235,12 @@ export function TaskEditor({
             onChange={(e) => setForm({ ...form, tags: e.target.value })}
           />
         </div>
+
+        <RecurrenceField
+          draft={recurrence}
+          onChange={setRecurrence}
+          dueDate={form.dueDate || null}
+        />
 
         {error ? <ErrorNotice detail={error} /> : null}
 

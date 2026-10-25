@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { PriorityBadge, STATUS_LABELS } from '@/components/ui/labels';
 import { formatDateIn } from '@/lib/dates';
+import { describeRecurrence, recurrenceBadge } from '@/lib/validation/recurrence';
 import { updateTask } from '@/app/(app)/actions';
 import { ErrorNotice } from '@/components/ui/feedback';
 import type { TaskListItem } from '@/server/services/tasks';
@@ -110,6 +111,14 @@ export function TaskBoard({
                         {task.assigneeName ? (
                           <span className="truncate text-[11px] text-ink-faint">
                             {task.assigneeName}
+                          </span>
+                        ) : null}
+                        {task.recurrence ? (
+                          <span
+                            className="text-[11px] text-ink-faint"
+                            title={describeRecurrence(task.recurrence) ?? undefined}
+                          >
+                            ↻ {recurrenceBadge(task.recurrence)}
                           </span>
                         ) : null}
                       </div>
