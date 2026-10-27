@@ -38,6 +38,77 @@ That account already has a personal workspace and a team workspace called
 **Acme Product**, with a project, six tasks, a milestone, a note and two
 calendar events.
 
+## Or deploy it to Render
+
+The form autofills from Next.js, and one autofilled field is wrong.
+
+| Field | Value |
+| --- | --- |
+| Branch | `claude/wonderful-lovelace-sj5tuy` |
+| **Root Directory** | **Leave empty.** Render may suggest `src/` — clear it |
+| Build Command | `npm ci && npm run build` |
+| Start Command | `npm run start` |
+| Language / Runtime | Node |
+| Instance type | Free is fine for a look |
+
+`src/` is the source folder *inside* the app, not the app. `package.json` is at
+the repository root, so pointing Render at `src/` means it finds no project to
+build and the deploy fails before it starts.
+
+Environment variables, under Advanced:
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://opirienxtsewxoolsaba.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_JTjNZmBI4Zo1gvdBmibXdg_A9X2GCOr` |
+| `REPORT_TIMEZONE` | `Asia/Kolkata` |
+| `NODE_VERSION` | `22` |
+| `CRON_SECRET` | `openssl rand -hex 32` |
+| `CREDENTIALS_ENCRYPTION_KEY` | `openssl rand -hex 32` |
+
+Generate the last two yourself rather than taking them from anyone —
+`CRON_SECRET` is what stops a stranger triggering your report run, and
+`CREDENTIALS_ENCRYPTION_KEY` encrypts stored OAuth tokens. Run the command
+twice and paste a different value into each.
+
+After the first deploy, set `NEXT_PUBLIC_APP_URL` to the URL Render gives you
+and redeploy. Links inside the daily report are built from it, so until it is
+set they point at `localhost`.
+
+### The schedules do not come across
+
+`vercel.json` is Vercel's format and Render ignores it, so none of these fire
+on their own:
+
+| Schedule | Endpoint | Does |
+| --- | --- | --- |
+| `30 15 * * *` UTC | `/api/cron/daily-reports` | 21:00 Asia/Kolkata report run |
+| `*/10 * * * *` | `/api/cron/run-jobs` | The job worker |
+| `0 * * * *` | `/api/cron/retry-deliveries` | Retries failed deliveries |
+| `15 */6 * * *` | `/api/cron/sync-connectors` | Connector sync and re-indexing |
+
+To restore them, add a **Cron Job** service in Render per schedule, each one
+calling its endpoint with the shared secret:
+
+```bash
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://<your-app>.onrender.com/api/cron/daily-reports
+```
+
+The routes also accept an `x-cron-secret` header if that suits better. Without
+a `SUPABASE_SERVICE_ROLE_KEY` they will authenticate and then report that they
+have nothing they are allowed to do, which is the intended behaviour rather
+than a failure.
+
+### Two more things about Render
+
+- **The free instance sleeps** after inactivity, so the first request after a
+  quiet spell takes the better part of a minute. That is Render, not the app.
+- **Pick a region near the database.** The Supabase project is in
+  `ap-southeast-2` (Sydney), so Singapore is a much shorter round trip than
+  Oregon. Every page here is server-rendered against that database, so the
+  distance shows up on every navigation.
+
 ## Or deploy it to Vercel
 
 Three minutes in the dashboard. I could not do this for you: the connected
