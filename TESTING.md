@@ -63,13 +63,27 @@ Environment variables, under Advanced:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_JTjNZmBI4Zo1gvdBmibXdg_A9X2GCOr` |
 | `REPORT_TIMEZONE` | `Asia/Kolkata` |
 | `NODE_VERSION` | `22` |
-| `CRON_SECRET` | `openssl rand -hex 32` |
-| `CREDENTIALS_ENCRYPTION_KEY` | `openssl rand -hex 32` |
+| `CRON_SECRET` | a 64-character hex string — see below |
+| `CREDENTIALS_ENCRYPTION_KEY` | another one, different |
 
-Generate the last two yourself rather than taking them from anyone —
-`CRON_SECRET` is what stops a stranger triggering your report run, and
-`CREDENTIALS_ENCRYPTION_KEY` encrypts stored OAuth tokens. Run the command
-twice and paste a different value into each.
+Those last two are values you generate, not text to paste. Run this twice and
+use a different result for each:
+
+```bash
+openssl rand -hex 32
+# or, without openssl:
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Generate them yourself rather than taking them from anyone, including from
+this repository's history: `CRON_SECRET` is what stops a stranger triggering
+your report run, and `CREDENTIALS_ENCRYPTION_KEY` encrypts stored OAuth
+tokens.
+
+**Where the variables go:** on the create form they are under *Environment
+Variables*, below Start Command — one Key/Value row each. If the service
+already exists, it is the *Environment* tab in its left sidebar, and saving
+there redeploys.
 
 After the first deploy, set `NEXT_PUBLIC_APP_URL` to the URL Render gives you
 and redeploy. Links inside the daily report are built from it, so until it is
@@ -127,13 +141,14 @@ Vercel account can list projects in the **CRYSTA IVF** team but gets
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://opirienxtsewxoolsaba.supabase.co` |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_JTjNZmBI4Zo1gvdBmibXdg_A9X2GCOr` |
    | `REPORT_TIMEZONE` | `Asia/Kolkata` |
-   | `CRON_SECRET` | `openssl rand -hex 32` |
-   | `CREDENTIALS_ENCRYPTION_KEY` | `openssl rand -hex 32` |
+   | `CRON_SECRET` | a 64-character hex string — `openssl rand -hex 32` |
+   | `CREDENTIALS_ENCRYPTION_KEY` | another one, different |
 
-   Generate the last two yourself rather than taking them from anyone —
+   Those last two are values you generate, not text to paste. Run
+   `openssl rand -hex 32` twice and use a different result for each.
    `CRON_SECRET` is what stops a stranger triggering your report run, and
-   `CREDENTIALS_ENCRYPTION_KEY` encrypts stored OAuth tokens. Run the command
-   twice and paste a different value into each.
+   `CREDENTIALS_ENCRYPTION_KEY` encrypts stored OAuth tokens, so generate them
+   yourself rather than taking them from anyone.
 
 3. **Deploy.** Then set `NEXT_PUBLIC_APP_URL` to the URL Vercel gives you and
    redeploy — links inside the daily report are built from it, so until it is
