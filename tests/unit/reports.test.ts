@@ -126,3 +126,78 @@ describe('renderReportText', () => {
     expect(renderReportText(base())).toContain('15 Mar 2026');
   });
 });
+
+describe('a day with nothing completed', () => {
+  /**
+   * The shape taken from the live database on 2026-10-27: a completed task
+   * exists in the workspace, but none was completed *that day*, while two are
+   * overdue and one is blocked.
+   *
+   * This is where a report is most able to mislead. If the renderer printed
+   * "Completed today: 0" or fell back to a cheerful empty state, a reader
+   * would take a day with overdue work for a quiet one.
+   */
+  const realDay = base({
+    scope: 'team',
+    reportDate: '2026-10-27',
+    workspaceName: 'Acme Product',
+    subjectName: null,
+    completedToday: [],
+    remainingToday: [],
+    overdue: [
+      task({ id: 't1', title: 'Audit the old invoice emails', status: 'blocked',
+             priority: 'urgent', dueDate: '2026-10-23', projectName: 'Billing rebuild' }),
+      task({ id: 't2', title: 'Migrate the billing ledger', status: 'in_progress',
+             priority: 'high', dueDate: '2026-10-26', projectName: 'Billing rebuild' }),
+    ],
+    blocked: [
+      task({ id: 't1', title: 'Audit the old invoice emails', status: 'blocked',
+             priority: 'urgent', dueDate: '2026-10-23', projectName: 'Billing rebuild' }),
+    ],
+    upcomingDeadlines: [
+      task({ id: 't3', title: 'Write the migration runbook', status: 'todo',
+             priority: 'medium', dueDate: '2026-10-28' }),
+      task({ id: 't4', title: 'Renew the TLS certificate', status: 'todo',
+             priority: 'urgent', dueDate: '2026-10-31' }),
+      task({ id: 't5', title: 'Submit the monthly report', status: 'todo',
+             priority: 'high', dueDate: '2026-10-31' }),
+    ],
+  });
+
+  it('says nothing about completions rather than reporting zero', () => {
+    const text = renderReportText(realDay);
+    expect(text).not.toContain('Completed by the team today');
+    expect(text).not.toContain('Completed today');
+    // And it does not invent a reassuring summary in its place.
+    expect(text).not.toMatch(/nothing|all clear|no tasks|quiet/i);
+  });
+
+  it('leads with the work that is actually late', () => {
+    const text = renderReportText(realDay);
+    expect(text).toContain('*Overdue*');
+    expect(text).toContain('Audit the old invoice emails');
+    expect(text).toContain('Migrate the billing ledger');
+    expect(text).toContain('*Blocked*');
+  });
+
+  it('cannot be mistaken for a quiet day', () => {
+    // The point of the whole section: a reader must be able to tell that this
+    // day had overdue work, from the text alone.
+    const text = renderReportText(realDay);
+    expect(text.length).toBeGreaterThan(100);
+    expect(text).toContain('*Acme Product — team summary');
+  });
+
+  it('shows the same date the figures were computed for', () => {
+    // A report headed with the wrong day is worse than no report: the figures
+    // are correct for a date the reader is not looking at.
+    expect(renderReportText(realDay)).toContain('27 Oct 2026');
+  });
+
+  it('still omits the sections that genuinely have no records', () => {
+    const text = renderReportText(realDay);
+    expect(text).not.toContain('Still open today');
+    expect(text).not.toContain('Milestones at risk');
+    expect(text).not.toContain('By team member');
+  });
+});
