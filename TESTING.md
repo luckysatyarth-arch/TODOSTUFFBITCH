@@ -38,6 +38,51 @@ That account already has a personal workspace and a team workspace called
 **Acme Product**, with a project, six tasks, a milestone, a note and two
 calendar events.
 
+## Or deploy it to Vercel
+
+Three minutes in the dashboard. I could not do this for you: the connected
+Vercel account can list projects in the **CRYSTA IVF** team but gets
+`403 forbidden` on creating one, so it does not hold create permission there.
+
+1. **Import the repo.** vercel.com → Add New → Project → import
+   `luckysatyarth-arch/TODOSTUFFBITCH`. It is a Next.js app at the repository
+   root, so every build setting is detected; change nothing.
+
+2. **Add the environment variables** before the first deploy. Two are the ones
+   from the local setup above; the other three you generate:
+
+   | Variable | Value |
+   | --- | --- |
+   | `NEXT_PUBLIC_SUPABASE_URL` | `https://opirienxtsewxoolsaba.supabase.co` |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_JTjNZmBI4Zo1gvdBmibXdg_A9X2GCOr` |
+   | `REPORT_TIMEZONE` | `Asia/Kolkata` |
+   | `CRON_SECRET` | `openssl rand -hex 32` |
+   | `CREDENTIALS_ENCRYPTION_KEY` | `openssl rand -hex 32` |
+
+   Generate the last two yourself rather than taking them from anyone —
+   `CRON_SECRET` is what stops a stranger triggering your report run, and
+   `CREDENTIALS_ENCRYPTION_KEY` encrypts stored OAuth tokens. Run the command
+   twice and paste a different value into each.
+
+3. **Deploy.** Then set `NEXT_PUBLIC_APP_URL` to the URL Vercel gives you and
+   redeploy — links inside the daily report are built from it, so until it is
+   set they point at `localhost`.
+
+4. **Lock it down.** Settings → Deployment Protection → Vercel Authentication.
+   This serves a live database on a public URL, so only you should be able to
+   open it.
+
+Two things to know about the deployment:
+
+- **The crons will not do anything useful yet.** `vercel.json` registers all
+  four, and they will authenticate with your `CRON_SECRET`, but report
+  generation and connector sync need `SUPABASE_SERVICE_ROLE_KEY` — which is a
+  real admin credential, so add it only if you want those, and only as a
+  sensitive variable.
+- **Vercel's Hobby plan runs crons once a day** and does not guarantee the
+  minute, so the 21:00 Asia/Kolkata schedule needs a paid plan to actually
+  fire at 21:00.
+
 ## What to try
 
 | Where | What is worth looking at |
