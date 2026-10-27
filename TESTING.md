@@ -200,6 +200,38 @@ rather than failing quietly:
 To turn any of those on, copy `.env.example` and fill in that section;
 `docs/INTEGRATIONS.md` has the per-provider steps.
 
+## Supabase has to be told where the app lives
+
+Easy to miss, and the failure is confusing: you sign up, the confirmation email
+arrives, you click it, and you land on a 404 at `/?code=...`.
+
+That path is the clue. The app asks Supabase to send people to
+`<app>/auth/callback`. When that address is not on Supabase's allow-list,
+Supabase does not error — it quietly falls back to the project's **Site URL**
+instead, which by default is whatever was there first. The one-time code is
+fine; it is being delivered to the wrong door.
+
+In **Supabase → Authentication → URL Configuration**:
+
+| Field | Value |
+| --- | --- |
+| Site URL | `https://<your-app>` |
+| Redirect URLs | `https://<your-app>/auth/callback` |
+| Redirect URLs | `http://localhost:3000/auth/callback` |
+
+Add both redirect entries. The localhost one is what lets you run locally
+against the same database without the confirmation link bouncing you to the
+deployed app.
+
+Then make sure the app agrees: `NEXT_PUBLIC_APP_URL` in the host's environment
+must be that same `https://<your-app>`, with no trailing slash. That is the
+value the app puts in the email in the first place, so if the two disagree you
+get the fallback again.
+
+A confirmation link that has already failed is spent — the code is single use
+and short-lived. Request a new one after fixing the settings, or sidestep email
+entirely by signing in as `alice@demo.test`, which is already confirmed.
+
 ## If signup rejects you
 
 New sign-ups may need email confirmation, depending on the project's auth
