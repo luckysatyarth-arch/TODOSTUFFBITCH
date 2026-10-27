@@ -6,7 +6,7 @@ list of things that quietly do not work.
 
 ## Database state
 
-Migrations 0001–0012 are applied to the Supabase project
+Migrations 0001–0013 and 0015 are applied to the Supabase project
 `opirienxtsewxoolsaba` and verified against it: 29 tables, all with RLS, 52
 policies, the three deliberate deny-all tables, 22 helper functions, the
 pgvector HNSW index and both storage buckets — matching what
@@ -25,12 +25,11 @@ non-retryable failure goes straight to `dead`.
 `src/lib/supabase/database.types.ts` is regenerated from that schema, so it no
 longer carries any hand-added declarations.
 
-**0013 is written and locally verified but not applied.** It splits seven
-`for all` write policies into per-action policies and adds twenty covering
-indexes for foreign keys, both from Supabase's performance linter. Applying it
-needs confirmation for its `drop policy` statements, which was not given, so
-it rolled back whole — the project is consistent at 0012, with none of 0013's
-policies or indexes present. Run it with:
+**0014 is written and locally verified but not applied.** It splits seven
+`for all` write policies into per-action policies, from Supabase's performance
+linter. Applying it needs confirmation for its `drop policy` statements, which
+was not given, so it rolled back whole — the seven `for all` policies are still
+in place and the project is otherwise current. Run it with:
 
 ```bash
 DATABASE_URL='postgresql://...' npm run db:push
@@ -39,7 +38,8 @@ DATABASE_URL='postgresql://...' npm run db:push
 Nothing depends on it: it is a performance and clarity change, and the 17
 checks in `05_verify_policy_split.sql` confirm it leaves effective access
 unchanged (members read and write, viewers read only, non-members see
-nothing).
+nothing). The twenty covering indexes it originally shipped with are split out
+into 0013, which is applied.
 
 One cosmetic mismatch if you compare the repository with the dashboard: the
 project's migration history lists `0012_tighten_anon_grants` and
@@ -170,15 +170,32 @@ and no network, so it is the one to put in CI first.
 The local harness also cannot say anything about the provider adapters, which
 need real OAuth clients and live accounts.
 
-### Recurrence covers four frequencies, not all of RFC 5545
+### Recurrence covers the common rules, not all of RFC 5545
 
 Daily, weekly (optionally on named weekdays), monthly and yearly, each with an
-interval, and an end date or a count. That covers the ordinary cases. It is not
-a full RRULE implementation: there is no "last Friday of the month", no
-"third Tuesday", no multiple rules on one task and no per-occurrence
-exceptions.
+interval and an end date or a count; plus `setpos` on a monthly rule, which
+selects by position among the chosen weekdays:
 
-A series also advances one step at a time, when an occurrence is explicitly
+| Rule | Means |
+| --- | --- |
+| `{freq:"monthly", weekdays:[1,2,3,4,5], setpos:-1}` | Last working day of the month |
+| `{freq:"monthly", weekdays:[5], setpos:-1}` | Last Friday |
+| `{freq:"monthly", weekdays:[2], setpos:3}` | Third Tuesday |
+| `{freq:"monthly", weekdays:[1], setpos:1, interval:3}` | First Monday, quarterly |
+
+That covers the ordinary cases, and the last working day in particular, which
+"every month on the 31st" gets wrong in any month ending on a weekend. What is
+still missing from a full RRULE: multiple rules on one task, per-occurrence
+exceptions, `setpos` on anything but a monthly rule, and selecting by month-day
+rather than weekday ("the 15th and the last day").
+
+A month with no matching date — a fifth Monday in a month that has four — is
+skipped rather than ending the series. That is a deliberate divergence from RFC
+5545, which produces no occurrence there: for a task, skipping to the next
+eligible month is useful where silence is a task that quietly stopped
+appearing.
+
+A series advances one step at a time, when an occurrence is explicitly
 completed, rather than being expanded into a year of rows upfront. That keeps
 it inside the rule that completion is never inferred, and it means a future
 occurrence does not exist to be rescheduled in advance. Editing the rule
@@ -188,10 +205,6 @@ One interaction worth knowing: a weekly rule with named weekdays and an
 interval above one steps whole weeks from the week the series started, so
 "every second Tuesday and Thursday" skips a full week rather than alternating
 between the two days.
-
-**Next step:** if "last working day of the month" is needed -- a common one
-for reporting tasks -- add a `setpos` field to the rule rather than widening
-`freq`.
 
 ### The signed-in screens still have no passing test run in this environment
 
@@ -263,9 +276,9 @@ counts into SQL views alongside `project_progress`.
    exists to run; they need provider credentials first.
 3. **Deepen connector indexing** behind a setting, starting with Drive
    document export, which is the most valuable and the best documented.
-4. **Add `setpos` to the recurrence rule** for "last working day of the
-   month", which reporting tasks want and the current four frequencies cannot
-   express.
+4. **Extend recurrence further if it is wanted** — selecting by month-day
+   rather than weekday, or per-occurrence exceptions. `setpos` covers the last
+   working day, which was the case that mattered.
 5. **Move dashboard aggregation into SQL** once a workspace outgrows a couple
    of thousand tasks.
 6. **Allow the project host in the environment's network settings and run the

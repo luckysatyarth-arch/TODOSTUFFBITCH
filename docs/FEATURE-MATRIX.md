@@ -51,7 +51,7 @@ Status key:
 | Project progress | Tested | completed / non-cancelled, as specified. Verified at 1/3 = 33.3% on live data |
 | Zero-task project | Tested | Reports null, not 0%, and never divides by zero |
 | Workload and overload warnings | Implemented | Relative to the busiest member, labelled a capacity guide not a productivity measure |
-| Recurrence | Tested | Daily, weekly (incl. named weekdays), monthly and yearly, with interval, end date or count. The next occurrence is created when one is explicitly completed, never when a due date passes. Anchored, so a monthly 31st does not drift to the 28th after February. Re-completing cannot fork a series. 20 unit tests plus 43 SQL checks |
+| Recurrence | Tested | Daily, weekly (incl. named weekdays), monthly and yearly, with interval, end date or count; plus monthly by position, so "last working day of the month" is expressible and never lands on a weekend. The next occurrence is created when one is explicitly completed, never when a due date passes. Anchored, so a monthly 31st does not drift to the 28th after February. Re-completing cannot fork a series. 41 unit tests plus 77 SQL checks |
 
 ## Calendar
 

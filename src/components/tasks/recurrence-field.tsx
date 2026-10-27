@@ -31,6 +31,12 @@ export type RecurrenceDraft = {
   freq: RecurrenceRule['freq'];
   interval: string;
   weekdays: number[];
+  /**
+   * How a monthly rule picks its date: on the same day of the month as the due
+   * date, or by position among the chosen weekdays ("last working day").
+   */
+  monthlyMode: 'day-of-month' | 'by-position';
+  setpos: string;
   ends: 'never' | 'on' | 'after';
   until: string;
   remaining: string;
@@ -39,6 +45,7 @@ export type RecurrenceDraft = {
 export function emptyRecurrenceDraft(): RecurrenceDraft {
   return {
     enabled: false, freq: 'weekly', interval: '1', weekdays: [],
+    monthlyMode: 'day-of-month', setpos: '-1',
     ends: 'never', until: '', remaining: '',
   };
 }
@@ -51,6 +58,8 @@ export function recurrenceToDraft(rule: RecurrenceRule | null | undefined): Recu
     freq: rule.freq,
     interval: String(rule.interval ?? 1),
     weekdays: rule.weekdays ?? [],
+    monthlyMode: rule.setpos !== undefined ? 'by-position' : 'day-of-month',
+    setpos: rule.setpos != null ? String(rule.setpos) : '-1',
     ends: rule.until ? 'on' : typeof rule.remaining === 'number' ? 'after' : 'never',
     until: rule.until ?? '',
     remaining: rule.remaining != null ? String(rule.remaining) : '',
@@ -68,11 +77,26 @@ export function draftToRecurrence(draft: RecurrenceDraft): RecurrenceRule | null
   if (!draft.enabled) return null;
 
   const interval = Number(draft.interval);
+  const setpos = Number(draft.setpos);
+
+  // A monthly by-position rule needs both the weekdays and the position; it is
+  // only emitted when the weekdays are actually chosen, because the database
+  // rejects a position with nothing to select from.
+  const byPosition =
+    draft.freq === 'monthly' &&
+    draft.monthlyMode === 'by-position' &&
+    draft.weekdays.length > 0 &&
+    Number.isFinite(setpos) &&
+    setpos !== 0;
+
   const rule: RecurrenceRule = {
     freq: draft.freq,
     ...(Number.isFinite(interval) && interval > 1 ? { interval } : {}),
     ...(draft.freq === 'weekly' && draft.weekdays.length
       ? { weekdays: [...draft.weekdays].sort((a, b) => a - b) }
+      : {}),
+    ...(byPosition
+      ? { weekdays: [...draft.weekdays].sort((a, b) => a - b), setpos }
       : {}),
     ...(draft.ends === 'on' && draft.until ? { until: draft.until } : {}),
     ...(draft.ends === 'after' && draft.remaining !== ''
@@ -130,9 +154,13 @@ export function RecurrenceField({
                 onChange={(e) =>
                   set({
                     freq: e.target.value as RecurrenceRule['freq'],
-                    // Weekdays only mean anything on a weekly rule, and the
-                    // database rejects them elsewhere.
-                    weekdays: e.target.value === 'weekly' ? draft.weekdays : [],
+                    // Weekdays mean something on a weekly rule and on a
+                    // monthly by-position one; the database rejects them
+                    // anywhere else.
+                    weekdays:
+                      e.target.value === 'weekly' || e.target.value === 'monthly'
+                        ? draft.weekdays
+                        : [],
                   })
                 }
               >
@@ -155,9 +183,60 @@ export function RecurrenceField({
             </div>
           </div>
 
-          {draft.freq === 'weekly' ? (
+          {draft.freq === 'monthly' ? (
             <div>
-              <span className="mb-1 block text-xs font-medium text-ink-soft">On</span>
+              <Label htmlFor="r-monthly-mode">Which day</Label>
+              <Select
+                id="r-monthly-mode"
+                value={draft.monthlyMode}
+                onChange={(e) =>
+                  set({
+                    monthlyMode: e.target.value as RecurrenceDraft['monthlyMode'],
+                    // Moving to by-position with nothing chosen would emit no
+                    // position at all, so seed it with the working week —
+                    // which is also the case this mode exists for.
+                    weekdays:
+                      e.target.value === 'by-position' && draft.weekdays.length === 0
+                        ? [1, 2, 3, 4, 5]
+                        : draft.weekdays,
+                  })
+                }
+              >
+                <option value="day-of-month">On the same date each month</option>
+                <option value="by-position">By position (e.g. last working day)</option>
+              </Select>
+            </div>
+          ) : null}
+
+          {draft.freq === 'monthly' && draft.monthlyMode === 'by-position' ? (
+            <div>
+              <Label htmlFor="r-setpos">Position</Label>
+              <Select
+                id="r-setpos"
+                value={draft.setpos}
+                onChange={(e) => set({ setpos: e.target.value })}
+              >
+                <option value="1">First</option>
+                <option value="2">Second</option>
+                <option value="3">Third</option>
+                <option value="4">Fourth</option>
+                <option value="5">Fifth</option>
+                <option value="-1">Last</option>
+                <option value="-2">Second-to-last</option>
+              </Select>
+              <p className="mt-1 text-[11px] text-ink-faint">
+                A month without that day — a fifth Monday, say — is skipped rather
+                than ending the series.
+              </p>
+            </div>
+          ) : null}
+
+          {draft.freq === 'weekly'
+            || (draft.freq === 'monthly' && draft.monthlyMode === 'by-position') ? (
+            <div>
+              <span className="mb-1 block text-xs font-medium text-ink-soft">
+                {draft.freq === 'monthly' ? 'Of these days' : 'On'}
+              </span>
               <div className="flex gap-1">
                 {WEEKDAYS.map((day, index) => {
                   const active = draft.weekdays.includes(day.value);
@@ -183,8 +262,10 @@ export function RecurrenceField({
                 })}
               </div>
               {draft.weekdays.length === 0 ? (
-                <p className="mt-1 text-[11px] text-ink-faint">
-                  No days selected, so it repeats on the same weekday as the due date.
+                <p className="mt-1 text-[11px] text-high">
+                  {draft.freq === 'monthly'
+                    ? 'Pick at least one day for the position to choose from.'
+                    : 'No days selected, so it repeats on the same weekday as the due date.'}
                 </p>
               ) : null}
             </div>

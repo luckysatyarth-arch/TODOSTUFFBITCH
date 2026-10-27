@@ -128,7 +128,7 @@ npm run dev
 | `npm test` | Unit tests (integration tests skip without credentials) |
 | `npm run test:e2e` | Playwright end-to-end tests |
 | `npm run db:push` | Apply pending migrations to `DATABASE_URL` |
-| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the 132 authorization and behaviour checks (no hosted project needed) |
+| `npm run db:verify` | Apply the migrations to a throwaway local Postgres and run the 166 authorization and behaviour checks (no hosted project needed) |
 | `npm run db:seed` | Seed demo data |
 
 To run the integration tests, which need the service role key:
@@ -166,7 +166,7 @@ src/
     connectors/        connector interface and per-provider adapters
     services/          dashboards, tasks, calendar, capture, search,
                        reports, delivery, indexing, rate limiting
-supabase/migrations/   eleven ordered SQL migrations
+supabase/migrations/   fifteen ordered SQL migrations
 supabase/local/        local verification harness (not deployed)
 docs/                  setup, feature matrix, limitations, research
 tests/                 unit, integration and e2e

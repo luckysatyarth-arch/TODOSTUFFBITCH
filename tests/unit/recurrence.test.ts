@@ -167,3 +167,78 @@ describe('parseRecurrence', () => {
     expect(parseRecurrence(null)).toBeNull();
   });
 });
+
+describe('setpos', () => {
+  it('accepts a monthly position with weekdays', () => {
+    const rule = { freq: 'monthly' as const, weekdays: [1, 2, 3, 4, 5], setpos: -1 };
+    expect(recurrenceRule.safeParse(rule).success).toBe(true);
+  });
+
+  it('rejects a position with nothing to select from', () => {
+    // setpos picks one of the month's matching weekdays; with no weekdays
+    // there is nothing to pick, and the database rejects it too.
+    expect(recurrenceRule.safeParse({ freq: 'monthly', setpos: -1 }).success).toBe(false);
+  });
+
+  it('rejects a position on a non-monthly rule', () => {
+    expect(recurrenceRule.safeParse({ freq: 'weekly', weekdays: [5], setpos: -1 }).success)
+      .toBe(false);
+    expect(recurrenceRule.safeParse({ freq: 'daily', setpos: 1 }).success).toBe(false);
+  });
+
+  it('rejects zero and out-of-reach positions', () => {
+    const base = { freq: 'monthly' as const, weekdays: [1] };
+    expect(recurrenceRule.safeParse({ ...base, setpos: 0 }).success).toBe(false);
+    expect(recurrenceRule.safeParse({ ...base, setpos: 6 }).success).toBe(false);
+    expect(recurrenceRule.safeParse({ ...base, setpos: -6 }).success).toBe(false);
+    expect(recurrenceRule.safeParse({ ...base, setpos: 5 }).success).toBe(true);
+    expect(recurrenceRule.safeParse({ ...base, setpos: -5 }).success).toBe(true);
+  });
+
+  it('still rejects monthly weekdays without a position', () => {
+    // Ambiguous: "monthly on Mondays" could be any of four or five dates.
+    expect(recurrenceRule.safeParse({ freq: 'monthly', weekdays: [1] }).success).toBe(false);
+  });
+
+  it('describes the working-day case the way a person would say it', () => {
+    expect(describeRecurrence({ freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: -1 }))
+      .toBe('Last working day of every month');
+    expect(describeRecurrence({ freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: 1 }))
+      .toBe('First working day of every month');
+  });
+
+  it('describes a named weekday position', () => {
+    expect(describeRecurrence({ freq: 'monthly', weekdays: [5], setpos: -1 }))
+      .toBe('Last Friday of every month');
+    expect(describeRecurrence({ freq: 'monthly', weekdays: [2], setpos: 3 }))
+      .toBe('Third Tuesday of every month');
+    expect(describeRecurrence({ freq: 'monthly', weekdays: [5], setpos: -2 }))
+      .toBe('Second-to-last Friday of every month');
+  });
+
+  it('describes a longer interval', () => {
+    expect(describeRecurrence({ freq: 'monthly', weekdays: [1], setpos: 1, interval: 3 }))
+      .toBe('First Monday of every 3rd month');
+  });
+
+  it('keeps the badge short', () => {
+    expect(recurrenceBadge({ freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: -1 }))
+      .toBe('Last working day');
+    expect(recurrenceBadge({ freq: 'monthly', weekdays: [5], setpos: -1 }))
+      .toBe('Last Fri');
+    expect(recurrenceBadge({ freq: 'monthly', weekdays: [1], setpos: 1, interval: 3 }))
+      .toBe('First Mon /3mo');
+  });
+
+  it('strips the database-maintained fields but keeps the position', () => {
+    expect(recurrenceInput.parse({
+      freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: -1,
+      anchor: '2020-01-01', occurrence: 9,
+    })).toEqual({ freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: -1 });
+  });
+
+  it('round-trips through parseRecurrence', () => {
+    const stored = { freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: -1, anchor: '2026-10-30' };
+    expect(parseRecurrence(stored)).toEqual(stored);
+  });
+});
