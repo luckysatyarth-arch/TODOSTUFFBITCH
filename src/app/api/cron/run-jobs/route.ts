@@ -21,8 +21,9 @@ export const maxDuration = 300;
  * double-count attempts on the jobs that succeeded. The counts in the body say
  * what happened, and `dead` is the number that have given up and need a human.
  *
- * Authenticated by the same shared secret as the other scheduled routes,
- * compared in constant time.
+ * Authenticated by the same shared secret as the other scheduled routes:
+ * Vercel Cron's Authorization header, or the `x-cron-secret` header that
+ * OPERATIONS.md documents for a manual drain. Compared in constant time.
  */
 export async function GET(request: NextRequest) {
   const env = serverEnv();
@@ -77,9 +78,14 @@ export async function GET(request: NextRequest) {
 }
 
 function authorized(request: NextRequest, secret: string): boolean {
-  const header = request.headers.get('authorization') ?? '';
-  const provided = header.startsWith('Bearer ') ? header.slice(7) : '';
-  const a = Buffer.from(provided);
+  const header = request.headers.get('authorization');
+  const custom = request.headers.get('x-cron-secret');
+  const candidate = header?.startsWith('Bearer ') ? header.slice(7) : custom;
+  if (!candidate) return false;
+
+  const a = Buffer.from(candidate);
   const b = Buffer.from(secret);
+  // timingSafeEqual throws on a length mismatch, so the lengths are compared
+  // first; the length of a secret is not what an attacker is probing for.
   return a.length === b.length && timingSafeEqual(a, b);
 }

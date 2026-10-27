@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { cn } from '@/lib/utils';
+import { formatTimeIn } from '@/lib/dates';
 import { updateTask } from '@/app/(app)/actions';
 import { ErrorNotice } from '@/components/ui/feedback';
 import type { DayCell } from './month-grid';
@@ -21,14 +22,20 @@ import type { DayCell } from './month-grid';
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function WeekGrid({
-  cells, selected, canWrite, workspaceId, timedLabel,
+  cells, selected, canWrite, workspaceId, timeZone,
 }: {
   cells: DayCell[];
   selected: string | null;
   canWrite: boolean;
   workspaceId: string;
-  /** Formats a timed event's start, in the workspace timezone. */
-  timedLabel: (isoInstant: string) => string;
+  /**
+   * The workspace's timezone, formatted here rather than on the server.
+   *
+   * A formatter function cannot cross the server/client boundary -- React
+   * cannot serialize it, and the page throws at request time -- so what comes
+   * over is the zone name.
+   */
+  timeZone: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -61,7 +68,12 @@ export function WeekGrid({
             const open = cell.tasks.filter(
               (t) => t.status !== 'completed' && t.status !== 'cancelled',
             );
-            const done = cell.tasks.filter((t) => t.status === 'completed');
+            // Closed work sorts after open, but every task is shown: the
+            // emptiness check below counts all of them, so anything left out
+            // here would leave a blank column with no placeholder.
+            const closed = cell.tasks.filter(
+              (t) => t.status === 'completed' || t.status === 'cancelled',
+            );
             const empty =
               cell.tasks.length + cell.events.length + cell.milestones.length === 0;
 
@@ -129,13 +141,13 @@ export function WeekGrid({
                       {e.isAllDay
                         ? '▭ '
                         : e.startsAt
-                          ? `${timedLabel(e.startsAt)} `
+                          ? `${formatTimeIn(e.startsAt, timeZone)} `
                           : '◷ '}
                       {e.title}
                     </p>
                   ))}
 
-                  {[...open, ...done].map((t) => (
+                  {[...open, ...closed].map((t) => (
                     <Link
                       key={t.id}
                       href={`/tasks/${t.id}?workspace=${workspaceId}`}
@@ -149,9 +161,11 @@ export function WeekGrid({
                         'block rounded px-1.5 py-0.5 text-[11px] hover:underline',
                         t.status === 'completed'
                           ? 'bg-done-soft text-done line-through'
-                          : t.priority === 'urgent'
-                            ? 'bg-urgent-soft text-urgent'
-                            : 'bg-sunken text-ink-soft',
+                          : t.status === 'cancelled'
+                            ? 'bg-sunken text-ink-faint line-through'
+                            : t.priority === 'urgent'
+                              ? 'bg-urgent-soft text-urgent'
+                              : 'bg-sunken text-ink-soft',
                         canWrite && 'cursor-grab',
                         dragging === t.id && 'opacity-50',
                       )}

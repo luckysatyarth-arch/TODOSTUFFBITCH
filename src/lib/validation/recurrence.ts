@@ -204,3 +204,49 @@ export function parseRecurrence(value: unknown): RecurrenceRule | null {
   const parsed = recurrenceRule.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
+
+/**
+ * Decides what recurrence to store, given what the user submitted and what is
+ * already there.
+ *
+ * The form round-trips the whole rule on every save, so an edit to the title
+ * arrives looking exactly like an edit to the schedule. Re-anchoring on each
+ * save would then walk a monthly series off its day of month -- a rule
+ * anchored on the 31st, currently sitting on Feb 28, would be re-anchored to
+ * the 28th and stay there. That is the very drift the anchor exists to
+ * prevent, so the anchor only moves when the rule itself actually changed.
+ */
+export function resolveRecurrence(
+  submitted: RecurrenceRule | null | undefined,
+  stored: unknown,
+  effectiveDueDate: string | null,
+): RecurrenceRule | null {
+  if (!submitted) return null;
+
+  const previous = parseRecurrence(stored);
+
+  // Compare only the fields the user owns; anchor and occurrence are the
+  // database's and were stripped from the input by the schema.
+  const comparable = (r: RecurrenceRule | null) => {
+    if (!r) return null;
+    const { anchor: _a, occurrence: _o, ...rest } = r;
+    return JSON.stringify(Object.entries(rest).sort(([a], [b]) => a.localeCompare(b)));
+  };
+
+  if (previous && comparable(previous) === comparable(submitted)) {
+    // Unchanged: keep the series exactly where it is.
+    return {
+      ...submitted,
+      ...(previous.anchor ? { anchor: previous.anchor } : {}),
+      ...(previous.occurrence !== undefined ? { occurrence: previous.occurrence } : {}),
+    };
+  }
+
+  // Genuinely a new or changed schedule, so anchor it on the due date this
+  // task now has. Without a due date the trigger falls back to the completion
+  // date, so leaving the anchor off is correct rather than a gap.
+  return {
+    ...submitted,
+    ...(effectiveDueDate ? { anchor: effectiveDueDate } : {}),
+  };
+}

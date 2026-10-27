@@ -5,6 +5,7 @@ import {
   recurrenceBadge,
   recurrenceInput,
   recurrenceRule,
+  resolveRecurrence,
 } from '@/lib/validation/recurrence';
 
 /**
@@ -240,5 +241,90 @@ describe('setpos', () => {
   it('round-trips through parseRecurrence', () => {
     const stored = { freq: 'monthly', weekdays: [1, 2, 3, 4, 5], setpos: -1, anchor: '2026-10-30' };
     expect(parseRecurrence(stored)).toEqual(stored);
+  });
+});
+
+describe('resolveRecurrence', () => {
+  /**
+   * Which anchor a save stores.
+   *
+   * The task form round-trips the whole rule on every save, so an edit to the
+   * title arrives looking identical to an edit to the schedule. Re-anchoring
+   * on each save walks a monthly series off its day of month: a rule anchored
+   * on the 31st, currently sitting on Feb 28, would be re-anchored to the 28th
+   * and stay there for good — the exact drift the anchor exists to prevent.
+   */
+
+  const monthly31st = { freq: 'monthly' as const, anchor: '2026-01-31', occurrence: 1 };
+
+  it('keeps the stored anchor when the rule did not change', () => {
+    // What the form posts back: the same rule, with anchor and occurrence
+    // already stripped by the input schema.
+    const submitted = { freq: 'monthly' as const };
+
+    // The task currently sits on Feb 28, the clamped occurrence.
+    expect(resolveRecurrence(submitted, monthly31st, '2026-02-28')).toEqual({
+      freq: 'monthly', anchor: '2026-01-31', occurrence: 1,
+    });
+  });
+
+  it('re-anchors only when the rule actually changed', () => {
+    const changed = { freq: 'monthly' as const, interval: 3 };
+
+    expect(resolveRecurrence(changed, monthly31st, '2026-02-28')).toEqual({
+      freq: 'monthly', interval: 3, anchor: '2026-02-28',
+    });
+  });
+
+  it('anchors a brand new rule on its due date', () => {
+    expect(resolveRecurrence({ freq: 'monthly' }, null, '2026-01-31')).toEqual({
+      freq: 'monthly', anchor: '2026-01-31',
+    });
+  });
+
+  it('treats a reordered weekday list as unchanged', () => {
+    // Clicking the same days in a different order is not a schedule change,
+    // and must not move the series.
+    const stored = { freq: 'weekly' as const, weekdays: [1, 3, 5], anchor: '2026-10-26' };
+    const submitted = { freq: 'weekly' as const, weekdays: [1, 3, 5] };
+
+    expect(resolveRecurrence(submitted, stored, '2026-11-02')).toEqual({
+      freq: 'weekly', weekdays: [1, 3, 5], anchor: '2026-10-26',
+    });
+  });
+
+  it('re-anchors when the weekdays genuinely change', () => {
+    const stored = { freq: 'weekly' as const, weekdays: [1, 3, 5], anchor: '2026-10-26' };
+    const submitted = { freq: 'weekly' as const, weekdays: [2, 4] };
+
+    expect(resolveRecurrence(submitted, stored, '2026-11-02')).toEqual({
+      freq: 'weekly', weekdays: [2, 4], anchor: '2026-11-02',
+    });
+  });
+
+  it('preserves a setpos series across an unrelated edit', () => {
+    const stored = {
+      freq: 'monthly' as const, weekdays: [1, 2, 3, 4, 5], setpos: -1,
+      anchor: '2026-10-30', occurrence: 3,
+    };
+    const submitted = { freq: 'monthly' as const, weekdays: [1, 2, 3, 4, 5], setpos: -1 };
+
+    expect(resolveRecurrence(submitted, stored, '2027-01-29')).toEqual(stored);
+  });
+
+  it('turning recurrence off clears the rule', () => {
+    expect(resolveRecurrence(null, monthly31st, '2026-02-28')).toBeNull();
+    expect(resolveRecurrence(undefined, monthly31st, '2026-02-28')).toBeNull();
+  });
+
+  it('leaves the anchor off when there is no due date to anchor on', () => {
+    // The spawn trigger falls back to the completion date, so an absent anchor
+    // is correct rather than a gap.
+    expect(resolveRecurrence({ freq: 'daily' }, null, null)).toEqual({ freq: 'daily' });
+  });
+
+  it('ignores an unreadable stored rule rather than trusting it', () => {
+    expect(resolveRecurrence({ freq: 'monthly' }, { freq: 'nonsense' }, '2026-02-28'))
+      .toEqual({ freq: 'monthly', anchor: '2026-02-28' });
   });
 });

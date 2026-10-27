@@ -81,6 +81,15 @@ export interface WorkerReport {
   failed: number;
   dead: number;
   reclaimed: number;
+  /**
+   * Jobs whose work succeeded but could not be marked finished.
+   *
+   * These are the ones that matter most to an operator: the side effect has
+   * already happened, the row is still `running`, and the stale-lock sweep
+   * will hand it to another worker — so the effect runs twice. Counted apart
+   * from `succeeded` so it cannot hide in a green response.
+   */
+  unconfirmed: number;
   results: Array<{ id: string; jobType: string; status: string; error?: string }>;
   durationMs: number;
 }
@@ -100,7 +109,7 @@ export async function runDueJobs(
   const worker = options.worker ?? `worker-${process.env.VERCEL_DEPLOYMENT_ID ?? 'local'}`;
 
   const report: WorkerReport = {
-    claimed: 0, succeeded: 0, failed: 0, dead: 0, reclaimed: 0,
+    claimed: 0, succeeded: 0, failed: 0, dead: 0, reclaimed: 0, unconfirmed: 0,
     results: [], durationMs: 0,
   };
 
@@ -127,21 +136,55 @@ export async function runDueJobs(
   for (const job of jobs) {
     try {
       const outcome = await runJob(client, job);
-      await client.rpc('complete_job', {
-        p_id: job.id,
-        p_result: (outcome.result ?? {}) as Json,
-      });
+
+      // The completion write has to be checked. If it fails silently the job
+      // is reported as done while its row stays `running`, and
+      // reclaim_stale_jobs then gives the same work to another worker — the
+      // double execution that claiming exists to prevent. One retry covers a
+      // dropped connection; past that the operator needs to know.
+      let completionError = await completeJob(client, job, outcome);
+      if (completionError) {
+        completionError = await completeJob(client, job, outcome);
+      }
+
+      if (completionError) {
+        report.unconfirmed += 1;
+        report.results.push({
+          id: job.id,
+          jobType: job.job_type,
+          status: 'unconfirmed',
+          error:
+            `the job ran, but it could not be marked finished (${completionError}); ` +
+            'it will be reclaimed and may run again',
+        });
+        continue;
+      }
+
       report.succeeded += 1;
       report.results.push({ id: job.id, jobType: job.job_type, status: 'succeeded' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Job threw a non-error.';
       const retryable = !(error instanceof PermanentJobError);
 
-      const { data: status } = await client.rpc('fail_job', {
+      const { data: status, error: failError } = await client.rpc('fail_job', {
         p_id: job.id,
         p_error: message,
         p_retryable: retryable,
       });
+
+      if (failError) {
+        // The job failed and the failure could not be recorded, so its row is
+        // still `running` and the sweep will retry it. That is the right
+        // outcome for a failure, but it must not be reported as handled.
+        report.unconfirmed += 1;
+        report.results.push({
+          id: job.id,
+          jobType: job.job_type,
+          status: 'unconfirmed',
+          error: `${message} (and the failure could not be recorded: ${failError.message})`,
+        });
+        continue;
+      }
 
       if (status === 'dead') report.dead += 1;
       else report.failed += 1;
@@ -206,6 +249,19 @@ async function runJob(client: Admin, job: JobRow): Promise<JobOutcome> {
     default:
       throw new PermanentJobError(`No handler for job type '${job.job_type}'.`);
   }
+}
+
+/** Marks a job finished. Returns an error message, or null on success. */
+async function completeJob(
+  client: Admin,
+  job: JobRow,
+  outcome: JobOutcome,
+): Promise<string | null> {
+  const { error } = await client.rpc('complete_job', {
+    p_id: job.id,
+    p_result: (outcome.result ?? {}) as Json,
+  });
+  return error ? error.message : null;
 }
 
 function asString(value: unknown): string | null {

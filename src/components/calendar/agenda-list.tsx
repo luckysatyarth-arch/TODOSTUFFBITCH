@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { formatDateIn, formatTimeIn } from '@/lib/dates';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/feedback';
 import type { DayCell } from './month-grid';
@@ -15,13 +16,18 @@ import type { DayCell } from './month-grid';
  */
 
 export function AgendaList({
-  cells, today, workspaceId, timedLabel, dayLabel,
+  cells, today, workspaceId, timeZone,
 }: {
   cells: DayCell[];
   today: string;
   workspaceId: string;
-  timedLabel: (isoInstant: string) => string;
-  dayLabel: (date: string) => string;
+  /**
+   * Formatted here rather than passed in as functions. This is a server
+   * component, so a function prop would work -- but the week view's did not,
+   * and taking the same shape keeps the two from diverging on a detail that
+   * breaks only at request time.
+   */
+  timeZone: string;
 }) {
   const days = cells.filter(
     (c) => c.tasks.length + c.events.length + c.milestones.length > 0,
@@ -44,6 +50,9 @@ export function AgendaList({
             (t) => t.status !== 'completed' && t.status !== 'cancelled',
           );
           const done = cell.tasks.filter((t) => t.status === 'completed');
+          // Cancelled work is listed too: a day is filtered in by its task
+          // count, so omitting any task renders an empty row.
+          const cancelled = cell.tasks.filter((t) => t.status === 'cancelled');
           const past = cell.date < today;
 
           return (
@@ -58,7 +67,7 @@ export function AgendaList({
                     cell.isToday ? 'text-accent' : past ? 'text-ink-faint' : 'text-ink',
                   )}
                 >
-                  {cell.isToday ? 'Today' : dayLabel(cell.date)}
+                  {cell.isToday ? 'Today' : formatDateIn(cell.date, undefined, 'EEE d MMM')}
                 </p>
                 <p className="text-[11px] text-ink-faint">
                   {open.length > 0 ? `${open.length} open` : null}
@@ -78,13 +87,17 @@ export function AgendaList({
                 {cell.events.map((e) => (
                   <p key={e.id} className="flex items-baseline gap-2 text-sm">
                     <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">
-                      {e.isAllDay ? 'All day' : e.startsAt ? timedLabel(e.startsAt) : '—'}
+                      {e.isAllDay
+                        ? 'All day'
+                        : e.startsAt
+                          ? formatTimeIn(e.startsAt, timeZone)
+                          : '—'}
                     </span>
                     <span className="min-w-0 truncate text-ink">{e.title}</span>
                   </p>
                 ))}
 
-                {[...open, ...done].map((t) => (
+                {[...open, ...done, ...cancelled].map((t) => (
                   <p key={t.id} className="flex items-baseline gap-2 text-sm">
                     {t.priority === 'urgent' && t.status !== 'completed' ? (
                       <Badge tone="urgent">Urgent</Badge>
@@ -93,7 +106,7 @@ export function AgendaList({
                       href={`/tasks/${t.id}?workspace=${workspaceId}`}
                       className={cn(
                         'min-w-0 truncate hover:underline',
-                        t.status === 'completed'
+                        t.status === 'completed' || t.status === 'cancelled'
                           ? 'text-ink-faint line-through'
                           : 'text-ink hover:text-accent',
                       )}

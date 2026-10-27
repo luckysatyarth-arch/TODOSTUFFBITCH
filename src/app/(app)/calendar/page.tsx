@@ -163,15 +163,14 @@ export default async function CalendarPage({
             selected={selectedDate}
             canWrite={writable}
             workspaceId={workspace.id}
-            timedLabel={(instant) => formatTimeIn(instant, workspace.timezone)}
+            timeZone={workspace.timezone}
           />
         ) : (
           <AgendaList
             cells={cells}
             today={today}
             workspaceId={workspace.id}
-            timedLabel={(instant) => formatTimeIn(instant, workspace.timezone)}
-            dayLabel={(date) => formatDateIn(date, undefined, 'EEE d MMM')}
+            timeZone={workspace.timezone}
           />
         )}
 

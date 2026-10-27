@@ -13,6 +13,7 @@ import {
   calendarEventInput, createProjectInput, milestoneInput, noteInput, updateProjectInput,
 } from '@/lib/validation/projects';
 import { uuid } from '@/lib/validation/common';
+import { resolveRecurrence } from '@/lib/validation/recurrence';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import {
   onNoteChanged, onProjectChanged, onRecordDeleted, onTaskChanged,
@@ -65,6 +66,18 @@ async function workspaceForTask(taskId: string) {
   return data.workspace_id;
 }
 
+/**
+ * The stored recurrence and due date, for deciding whether an edit changed the
+ * schedule.
+ */
+async function currentSchedule(taskId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from('tasks').select('workspace_id, recurrence, due_date').eq('id', taskId).maybeSingle();
+  if (!data) throw new AuthorizationError('Task not found.');
+  return data;
+}
+
 function revalidateWorkspace() {
   revalidatePath('/', 'layout');
 }
@@ -92,9 +105,10 @@ export async function createTask(raw: unknown): Promise<ActionResult<{ id: strin
         // Anchor the series on the first occurrence's due date. The database
         // counts every later date from this, which is what stops a monthly
         // rule drifting off its day of month after a short February.
-        recurrence: input.recurrence
-          ? ({ ...input.recurrence, anchor: input.dueDate ?? undefined } as unknown as Json)
-          : null,
+        // A new task has nothing stored, so this anchors on its due date.
+        recurrence: resolveRecurrence(
+          input.recurrence, null, input.dueDate ?? null,
+        ) as unknown as Json,
         source_capture_id: input.sourceCaptureId ?? null,
         created_by: session.userId,
       })
@@ -123,8 +137,8 @@ export async function createTask(raw: unknown): Promise<ActionResult<{ id: strin
 export async function updateTask(raw: unknown): Promise<ActionResult> {
   try {
     const input = updateTaskInput.parse(raw);
-    const workspaceId = await workspaceForTask(input.id);
-    const { supabase } = await writeContext(workspaceId);
+    const existing = await currentSchedule(input.id);
+    const { supabase } = await writeContext(existing.workspace_id);
 
     // Only forward keys the caller actually sent, so an omitted field is left
     // alone rather than being nulled.
@@ -140,16 +154,13 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
     if (input.estimatedMinutes !== undefined) patch.estimated_minutes = input.estimatedMinutes;
     if (input.actualMinutes !== undefined) patch.actual_minutes = input.actualMinutes;
     if (input.recurrence !== undefined) {
-      // Editing the rule re-anchors it on the due date this task now has, so
-      // the schedule the user just described is the one they get. The fields
-      // the database maintains were stripped by the schema, so a round-tripped
-      // rule cannot silently move the series.
-      patch.recurrence = input.recurrence
-        ? ({
-            ...input.recurrence,
-            anchor: input.dueDate ?? undefined,
-          } as unknown as Json)
-        : null;
+      patch.recurrence = resolveRecurrence(
+        input.recurrence,
+        existing.recurrence,
+        // An omitted due date means "leave it alone", so the stored one still
+        // applies and is what a changed rule anchors on.
+        input.dueDate !== undefined ? input.dueDate : existing.due_date,
+      ) as unknown as Json;
     }
     if (input.tags !== undefined) patch.tags = input.tags;
     if (input.boardPosition !== undefined) patch.board_position = input.boardPosition;
@@ -164,7 +175,7 @@ export async function updateTask(raw: unknown): Promise<ActionResult> {
       .single();
     if (error) throw new Error(error.message);
 
-    if (saved) await onTaskChanged(workspaceId, saved);
+    if (saved) await onTaskChanged(existing.workspace_id, saved);
 
     revalidateWorkspace();
     return { ok: true };
